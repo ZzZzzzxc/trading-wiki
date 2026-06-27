@@ -3,7 +3,15 @@ import type { ChunkMarkdownOptions, RagChunk, RagSourceDocument } from '@/lib/ra
 
 const DEFAULT_MIN_LENGTH = 300;
 const DEFAULT_MAX_LENGTH = 500;
-const CHUNK_OVERLAP = 50; // 相邻 chunk 重叠字符数，避免边界信息丢失
+const CHUNK_OVERLAP = 150; // 相邻 chunk 重叠字符数，避免边界信息丢失（原 50 → 150）
+
+/** 各文档类型的专属分块大小 */
+const DOC_TYPE_LIMITS: Record<string, { min: number; max: number }> = {
+  daily_review:   { min: 200, max: 300 },  // 复盘：短点，每段独立
+  theme_research: { min: 400, max: 600 },  // 产业链：长点，保持完整性
+  stock_profile:  { min: 400, max: 600 },  // 个股档案：同上
+  viewpoint:      { min: 300, max: 500 },  // 观点：适中
+};
 
 interface MarkdownSection {
   headingPath: string[];
@@ -184,6 +192,7 @@ function buildChunkBase(document: RagSourceDocument) {
     date: document.frontmatter.date,
     author: document.frontmatter.author,
     platform: document.frontmatter.platform,
+    stance: document.frontmatter.stance,
     stocks: getStocks(document.frontmatter),
     themes: getThemes(document.frontmatter),
     tags: document.frontmatter.tags ?? [],
@@ -194,8 +203,11 @@ export function chunkMarkdownDocument(
   document: RagSourceDocument,
   options: ChunkMarkdownOptions = {},
 ): RagChunk[] {
-  const minLength = options.minLength ?? DEFAULT_MIN_LENGTH;
-  const maxLength = options.maxLength ?? DEFAULT_MAX_LENGTH;
+  // 按文档类型选择分块大小
+  const docType = document.frontmatter.type;
+  const limits = DOC_TYPE_LIMITS[docType];
+  const minLength = options.minLength ?? limits?.min ?? DEFAULT_MIN_LENGTH;
+  const maxLength = options.maxLength ?? limits?.max ?? DEFAULT_MAX_LENGTH;
   const sections = splitMarkdownIntoSections(document.content);
   const chunks: RagChunk[] = [];
   const chunkBase = buildChunkBase(document);

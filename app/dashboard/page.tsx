@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowRight, Plus } from 'lucide-react';
+import { ArrowRight, Plus, TrendingUp, TrendingDown, Minus, Archive } from 'lucide-react';
 import { DocumentList } from '@/components/documents/document-list';
 import { PageHero } from '@/components/documents/page-hero';
-import { AppShell } from '@/components/layout/app-shell';
-import { getDashboardSummary } from '@/lib/server/documents';
+import { AppShell } from '@/components/layout';
+import { getDashboardSummary, type TrendInfo } from '@/lib/server/documents';
 
 export const metadata: Metadata = {
   title: '仪表盘 - A 股投研助手',
@@ -20,6 +20,7 @@ export default async function DashboardPage() {
     summary.stanceDistribution.watch || 1;
 
   const maxTrend = Math.max(...summary.trend.map((t) => t.count), 1);
+  const materialsCount = summary.items.filter((item) => item.type === 'material').length;
 
   return (
     <AppShell currentPath="/dashboard">
@@ -41,14 +42,15 @@ export default async function DashboardPage() {
 
         {/* 统计卡片 */}
         <section className="stat-grid">
-          <StatCard label="总文档" value={summary.items.length} color="var(--text)" hint="本地 Markdown" />
-          <StatCard label="观点蒸馏" value={summary.totalViewpoints} color="#d4b16a" href="/viewpoints" />
+          <StatCard label="总文档" value={summary.items.length} color="var(--text)" hint="本地 Markdown" trend={summary.trends.totalDocuments} />
+          <StatCard label="观点蒸馏" value={summary.totalViewpoints} color="#d4b16a" href="/viewpoints" trend={summary.trends.totalViewpoints} />
           <StatCard
             label="待验证断言"
             value={summary.pendingFacts}
             color={summary.pendingFacts > 0 ? '#ffb3b3' : 'var(--muted)'}
             href={summary.pendingFacts > 0 ? '/facts' : undefined}
             hint={summary.pendingFacts > 0 ? '需要关注' : '暂无'}
+            trend={summary.trends.pendingFacts}
           />
           <StatCard
             label="今日到期验证"
@@ -56,6 +58,14 @@ export default async function DashboardPage() {
             color={summary.dueTodayWindows > 0 ? '#ffb3b3' : 'var(--muted)'}
             href={summary.dueTodayWindows > 0 ? '/facts' : undefined}
             hint={summary.dueTodayWindows > 0 ? '尽快复核' : '暂无'}
+            trend={summary.trends.dueTodayWindows}
+          />
+          <StatCard
+            label="原始素材"
+            value={materialsCount}
+            color="#8cd8b0"
+            href="/materials"
+            icon={<Archive size={20} />}
           />
         </section>
 
@@ -224,20 +234,59 @@ function StatCard({
   value,
   color,
   href,
+  icon,
   hint,
+  trend,
 }: {
   label: string;
   value: number;
   color: string;
   href?: string;
+  icon?: React.ReactNode;
+  trend?: TrendInfo;
   hint?: string;
 }) {
+  const formattedValue = Number(value).toLocaleString('zh-CN');
+
+  const trendIcon = trend ? (
+    trend.direction === 'up' ? (
+      <TrendingUp size={14} style={{ color: '#4ade80' }} />
+    ) : trend.direction === 'down' ? (
+      <TrendingDown size={14} style={{ color: '#f87171' }} />
+    ) : (
+      <Minus size={14} style={{ color: 'var(--muted)' }} />
+    )
+  ) : null;
+
+  const trendColor =
+    trend?.direction === 'up'
+      ? '#4ade80'
+      : trend?.direction === 'down'
+        ? '#f87171'
+        : 'var(--muted)';
+
   const content = (
     <div className={`glass-card stat-card ${href ? 'interactive' : ''}`}>
+      {icon && <div style={{ marginBottom: 4, opacity: 0.7 }}>{icon}</div>}
       <span className="stat-card-label">{label}</span>
       <span className="stat-card-value" style={{ color }}>
-        {value}
+        {formattedValue}
       </span>
+      {trend ? (
+        <span
+          style={{
+            fontSize: 12,
+            color: trendColor,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 3,
+            marginTop: -2,
+          }}
+        >
+          {trendIcon}
+          {trend.percent}%
+        </span>
+      ) : null}
       {hint ? (
         <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: -4 }}>{hint}</span>
       ) : null}

@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Send, Plus, ChevronDown, ChevronUp, Brain, Trash2 } from 'lucide-react';
 import { getDocumentTypeBadgeClass } from '@/lib/utils/display';
 import { renderMarkdown } from '@/lib/utils/markdown';
-import { AppShell } from '@/components/layout/app-shell';
+import { AppShell } from '@/components/layout';
+import { useToast } from '@/components/toast';
+import { ConfirmDialog } from '@/components/dialogs/confirm-dialog';
 
 // ---- Types ----
 
@@ -70,26 +72,43 @@ export default function AskPage() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  const { showToast } = useToast();
+
   // 会话线程
   const [threadId, setThreadId] = useState<string | null>(null);
   const [threadTitle, setThreadTitle] = useState('');
 
   // 历史会话
   const [history, setHistory] = useState<QAThread[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
   const [showHistory, setShowHistory] = useState(false);
+
+  // 删除确认对话框
+  const [deletingThread, setDeletingThread] = useState<QAThread | null>(null);
+
+  useEffect(() => {
+    document.title = '知识库问答 - A 股投研助手';
+  }, []);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    setHistoryError('');
     try {
       const res = await fetch('/api/qa');
       const payload = await res.json();
       if (payload.ok && payload.data) {
         setHistory(payload.data);
       }
-    } catch { /* 静默 */ }
+    } catch {
+      setHistoryError('加载历史会话失败');
+    } finally {
+      setHistoryLoading(false);
+    }
   }, []);
 
   useEffect(() => { loadHistory(); }, [loadHistory]);
@@ -132,9 +151,10 @@ export default function AskPage() {
   }
 
   /** 删除历史会话 */
-  async function handleDeleteThread(e: React.MouseEvent, thread: QAThread) {
-    e.stopPropagation(); // 防止触发加载
-    if (!confirm(`确定删除「${thread.title}」吗？此操作不可恢复。`)) return;
+  async function handleDeleteThread() {
+    const thread = deletingThread;
+    if (!thread) return;
+    setDeletingThread(null);
 
     try {
       const res = await fetch('/api/documents', {
@@ -144,6 +164,8 @@ export default function AskPage() {
       });
       const payload = await res.json();
       if (!payload.ok) throw new Error(payload.error || '删除失败');
+
+      showToast('会话已删除', 'success');
 
       // 如果删除的是当前会话，清空
       if (thread.threadId === threadId) {
@@ -330,7 +352,11 @@ export default function AskPage() {
         {/* 历史会话面板 */}
         {showHistory ? (
           <div style={{ borderBottom: '1px solid var(--border)', maxHeight: 240, overflowY: 'auto', padding: '12px 0', flexShrink: 0 }}>
-            {history.length > 0 ? (
+            {historyLoading ? (
+              <div className="text-muted" style={{ textAlign: 'center', padding: 20, fontSize: 13 }}>加载历史会话...</div>
+            ) : historyError ? (
+              <div className="status-message status-error" style={{ margin: '8px 12px', fontSize: 13 }}>{historyError}</div>
+            ) : history.length > 0 ? (
               <div className="checkbox-list">
                 {history.map((thread) => (
                   <div key={thread.threadId} className="checkbox-item" style={{ cursor: 'pointer', position: 'relative' }} onClick={() => handleLoadThread(thread)}>
@@ -347,7 +373,7 @@ export default function AskPage() {
                     </div>
                     <button
                       type="button"
-                      onClick={(e) => handleDeleteThread(e, thread)}
+                      onClick={(e) => { e.stopPropagation(); setDeletingThread(thread); }}
                       title="删除此会话"
                       style={{
                         position: 'absolute', top: 8, right: 8,
@@ -419,6 +445,16 @@ export default function AskPage() {
           {streaming ? <div className="text-muted" style={{ fontSize: 11, marginTop: 8, textAlign: 'center' }}>AI 正在生成回复...</div> : null}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={deletingThread !== null}
+        title="确认删除"
+        message={deletingThread ? `确定删除「${deletingThread.title}」吗？此操作不可恢复。` : ''}
+        variant="danger"
+        confirmLabel="删除"
+        onConfirm={handleDeleteThread}
+        onCancel={() => setDeletingThread(null)}
+      />
     </AppShell>
   );
 }
@@ -430,6 +466,7 @@ function ChatBubble({ message: msg }: { message: ChatMessage }) {
   const isUser = msg.role === 'user';
   const isStreaming = msg.streaming;
   const displayContent = isStreaming ? msg.streamingContent || '' : msg.content;
+  const sixSegments = !isStreaming && !isUser ? parseSixSegments(displayContent) : null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: isUser ? 'flex-end' : 'flex-start', maxWidth: '100%' }}>
@@ -446,7 +483,9 @@ function ChatBubble({ message: msg }: { message: ChatMessage }) {
             : { background: 'rgba(15,23,34,0.88)', borderColor: 'var(--border)', borderBottomLeftRadius: 6 }),
         }}
       >
-        {isStreaming ? (
+        {sixSegments ? (
+          <SixSegmentCards segments={sixSegments} msgId={msg.id} />
+        ) : isStreaming ? (
           <div style={{ whiteSpace: 'pre-wrap' }}>
             {displayContent || '思考中...'}
             {isStreaming ? <span className="thinking-cursor" /> : null}
@@ -534,6 +573,105 @@ function SourcePanel({ sources, msgId }: { sources: Source[]; msgId: string }) {
           })}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+// ---- Six-Segment Card Helpers ----
+
+const SIX_SEGMENT_HEADINGS = ['结论', '证据链', '分歧与反证', '后续验证', '交易含义', '引用来源'];
+
+const SEGMENT_STYLES: Record<string, { label: string; color: string; borderColor: string }> = {
+  '结论':       { label: '结论',       color: '#6ed19f', borderColor: 'rgba(110,209,159,0.3)' },
+  '证据链':     { label: '证据链',     color: '#7eb8ff', borderColor: 'rgba(126,184,255,0.3)' },
+  '分歧与反证': { label: '分歧与反证', color: '#e09090', borderColor: 'rgba(224,144,144,0.3)' },
+  '后续验证':   { label: '后续验证',   color: '#d4b16a', borderColor: 'rgba(212,177,106,0.3)' },
+  '交易含义':   { label: '交易含义',   color: '#c08ae0', borderColor: 'rgba(192,138,224,0.3)' },
+  '引用来源':   { label: '引用来源',   color: '#8ac4d8', borderColor: 'rgba(138,196,216,0.3)' },
+};
+
+const EMPTY_PLACEHOLDER = '当前知识库中未发现相关信息';
+
+/**
+ * 尝试将文本按六段式结构（## 结论、## 证据链 等）拆分。
+ * 成功返回段落数组，失败（不足 4 段）返回 null，回退到普通 markdown 渲染。
+ */
+function parseSixSegments(text: string): Array<{ heading: string; content: string }> | null {
+  if (!text) return null;
+
+  const segments: Array<{ heading: string; content: string }> = [];
+  const parts = text.split(/\n(?=##\s)/);
+
+  for (const part of parts) {
+    const headingMatch = part.match(/^##\s+(.+)$/m);
+    if (headingMatch) {
+      const headingText = headingMatch[1].trim();
+      if (SIX_SEGMENT_HEADINGS.includes(headingText)) {
+        const content = part.replace(/^##\s+.+$\n?/, '').trim();
+        segments.push({
+          heading: headingText,
+          content: content || EMPTY_PLACEHOLDER,
+        });
+      }
+    }
+  }
+
+  if (segments.length < 4) return null;
+  return segments;
+}
+
+// ---- Six-Segment Cards Component ----
+
+function SixSegmentCards({ segments, msgId }: { segments: Array<{ heading: string; content: string }>; msgId?: string }) {
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+      gap: 12,
+    }}>
+      {segments.map((seg) => {
+        const style = SEGMENT_STYLES[seg.heading];
+        return (
+          <div
+            key={seg.heading}
+            id={`seg-${msgId}-${seg.heading}`}
+            style={{
+              background: 'rgba(15,23,34,0.88)',
+              border: `1px solid ${style?.borderColor ?? 'var(--border)'}`,
+              borderRadius: 12,
+              padding: '16px 18px',
+            }}
+          >
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 700,
+                marginTop: 0,
+                marginBottom: 10,
+                color: style?.color ?? 'var(--text)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}
+            >
+              <span style={{
+                display: 'inline-block',
+                width: 3,
+                height: 16,
+                borderRadius: 2,
+                background: style?.color ?? 'var(--border)',
+                flexShrink: 0,
+              }} />
+              {style?.label ?? seg.heading}
+            </div>
+            <div
+              className="markdown-body"
+              style={{ fontSize: 13, lineHeight: 1.7 }}
+              dangerouslySetInnerHTML={{ __html: renderChatMarkdown(seg.content, msgId) }}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }

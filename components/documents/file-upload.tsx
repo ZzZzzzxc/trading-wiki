@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
+import { useToast } from '@/components/toast';
 
 interface UploadResult {
   text: string;
@@ -27,6 +28,7 @@ export function FileUpload({
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dragCounter = useRef(0);
+  const { showToast } = useToast();
 
   const processFile = useCallback(
     async (file: File) => {
@@ -76,8 +78,10 @@ export function FileUpload({
                 const data = event.data as UploadResult;
                 setUploaded(data);
                 onTextExtracted(data.text, data.fileName);
+                showToast('文件解析完成', 'success');
               } else if (event.type === 'error') {
                 setError(event.message as string);
+                showToast(event.message as string, 'error');
                 setLoading(false);
               }
             } catch {
@@ -86,7 +90,9 @@ export function FileUpload({
           }
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : '文件处理失败');
+        const msg = err instanceof Error ? err.message : '文件处理失败';
+        setError(msg);
+        showToast(msg, 'error');
       } finally {
         setLoading(false);
       }

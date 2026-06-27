@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PageHero } from '@/components/documents/page-hero';
-import { AppShell } from '@/components/layout/app-shell';
+import { AppShell } from '@/components/layout';
 import { ThemeWorkbench } from '@/components/themes/theme-workbench';
 import { getDocumentById, getDocumentsByType } from '@/lib/server/documents';
 import { parseThemeMarkdown } from '@/lib/themes/markdown';
+
+export const metadata = { title: '编辑产业链研究 - A 股投研助手' };
 
 interface ThemeEditPageProps {
   params: Promise<{ id: string }>;

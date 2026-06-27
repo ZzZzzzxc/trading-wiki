@@ -1,13 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { PageHero } from '@/components/documents/page-hero';
 import { MarkdownPreview } from '@/components/documents/markdown-preview';
-import { AppShell } from '@/components/layout/app-shell';
+import { AppShell } from '@/components/layout';
 import { FileUpload } from '@/components/documents/file-upload';
 import { materialTypes, materialTypeLabels } from '@/lib/types/material';
 import { evidenceLevels, evidenceLevelLabels } from '@/lib/types/fact';
+import { useToast } from '@/components/toast';
 
 interface SaveResponse {
   ok: boolean;
@@ -29,6 +30,9 @@ export default function NewMaterialPage() {
   const [extracting, setExtracting] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const { showToast } = useToast();
+
+  useEffect(() => { document.title = '新建素材 - A 股投研助手'; }, []);
 
   async function handleExtract() {
     if (!content.trim()) { setError('请先填写素材内容再提取'); return; }
@@ -49,6 +53,7 @@ export default function NewMaterialPage() {
       if (mt) setMaterialType(mt);
       if (el) setEvidenceLevel(el);
       setMessage('AI 提取完成，请核对信息后保存。');
+      showToast('AI 提取完成', 'success');
     } catch (e) {
       setError(e instanceof Error ? e.message : '提取失败');
     } finally {
@@ -91,10 +96,13 @@ export default function NewMaterialPage() {
       if (!res.ok || !payload.ok || !payload.data) {
         throw new Error(typeof payload.error === 'string' ? payload.error : '保存素材失败');
       }
+      showToast('素材已保存', 'success');
       router.push(`/materials/${payload.data.id}`);
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : '保存失败');
+      const msg = e instanceof Error ? e.message : '保存失败';
+      setError(msg);
+      showToast(msg, 'error');
     } finally {
       setSaving(false);
     }

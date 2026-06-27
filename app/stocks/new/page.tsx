@@ -1,7 +1,9 @@
 import { PageHero } from '@/components/documents/page-hero';
-import { AppShell } from '@/components/layout/app-shell';
+import { AppShell } from '@/components/layout';
 import { StockWorkbench } from '@/components/stocks/stock-workbench';
 import { getDocumentsByType } from '@/lib/server/documents';
+
+export const metadata = { title: '新建个股档案 - A 股投研助手' };
 
 export default async function NewStockPage() {
   const [viewpoints, reviews, notes, materials] = await Promise.all([

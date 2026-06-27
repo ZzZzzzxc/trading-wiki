@@ -113,3 +113,20 @@ export const DOC_TYPE_OPTIONS = [
   { label: '原始资料', value: 'raw' as const },
 ];
 
+/** 相对时间格式化 */
+export function relativeTime(dateStr: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  const diffMs = now - then;
+  if (diffMs < 0) return dateStr; // 未来日期
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) return '刚刚';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return diffMin + '分钟前';
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return diffHour + '小时前';
+  const diffDay = Math.floor(diffHour / 24);
+  if (diffDay < 7) return diffDay + '天前';
+  return dateStr;
+}
+

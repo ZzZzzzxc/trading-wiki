@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { PageHero } from '@/components/documents/page-hero';
 import { MarkdownPreview } from '@/components/documents/markdown-preview';
-import { AppShell } from '@/components/layout/app-shell';
+import { AppShell } from '@/components/layout';
 import { parseLines } from '@/lib/utils/strings';
+import { useToast } from '@/components/toast';
 
 interface SaveResponse {
   ok: boolean;
@@ -28,6 +29,9 @@ export default function NewNotePage() {
   const [showPreview, setShowPreview] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const { showToast } = useToast();
+
+  useEffect(() => { document.title = '新建笔记 - A 股投研助手'; }, []);
 
   async function handleSave() {
     if (!title.trim()) {
@@ -65,14 +69,15 @@ export default function NewNotePage() {
         );
       }
 
+      showToast('笔记已保存', 'success');
       router.push(`/notes/${payload.data.id}`);
       router.refresh();
     } catch (saveError) {
-      setError(
-        saveError instanceof Error
-          ? saveError.message
-          : '保存笔记失败，请稍后重试。',
-      );
+      const msg = saveError instanceof Error
+        ? saveError.message
+        : '保存笔记失败，请稍后重试。';
+      setError(msg);
+      showToast(msg, 'error');
     } finally {
       setSaving(false);
     }

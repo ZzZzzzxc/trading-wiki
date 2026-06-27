@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useToast } from '@/components/toast';
 
 interface DeleteButtonProps {
   documentId: string;
@@ -14,6 +15,7 @@ export function DeleteButton({ documentId, redirectTo = '/dashboard' }: DeleteBu
   const [showConfirm, setShowConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
+  const { showToast } = useToast();
 
   async function handleDelete() {
     setDeleting(true);
@@ -31,10 +33,14 @@ export function DeleteButton({ documentId, redirectTo = '/dashboard' }: DeleteBu
         throw new Error(typeof payload.error === 'string' ? payload.error : '删除失败');
       }
 
+      showToast('文档已删除', 'success');
+
       router.push(redirectTo);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '删除失败');
+      const msg = err instanceof Error ? err.message : '删除失败';
+      setError(msg);
+      showToast(msg, 'error');
       setDeleting(false);
       setShowConfirm(false);
     }

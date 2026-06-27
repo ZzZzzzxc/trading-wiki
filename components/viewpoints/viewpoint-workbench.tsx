@@ -15,6 +15,7 @@ import {
 import { useStreamAI } from '@/lib/hooks/use-stream-ai';
 import { ThinkingPanel } from '@/components/thinking-panel';
 import { parseLines, stringifyLines, parseSourcedLines, stringifySourcedLines } from '@/lib/utils/strings';
+import { useToast } from '@/components/toast';
 
 interface SaveResponse {
   ok: boolean;
@@ -51,6 +52,7 @@ export function ViewpointWorkbench() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string>('');
   const [error, setError] = useState<string>('');
+  const { showToast } = useToast();
 
   const {
     thinking,
@@ -65,6 +67,7 @@ export function ViewpointWorkbench() {
     if (streamResult) {
       setResult(streamResult);
       setMessage('AI 蒸馏完成，当前结果可继续编辑后再保存。');
+      showToast('AI 观点蒸馏完成', 'success');
 
       // 自动创建可验证断言
       const claims = (streamResult as ViewpointExtractionResult).verifiable_claims;
@@ -153,14 +156,15 @@ export function ViewpointWorkbench() {
         );
       }
 
+      showToast('观点已保存', 'success');
       router.push(`/viewpoints/${payload.data.id}`);
       router.refresh();
     } catch (saveError) {
-      setError(
-        saveError instanceof Error
-          ? saveError.message
-          : '保存观点失败，请稍后重试。',
-      );
+      const msg = saveError instanceof Error
+        ? saveError.message
+        : '保存观点失败，请稍后重试。';
+      setError(msg);
+      showToast(msg, 'error');
     } finally {
       setSaving(false);
     }

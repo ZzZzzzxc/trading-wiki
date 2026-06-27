@@ -1,6 +1,8 @@
 import { PageHero } from '@/components/documents/page-hero';
-import { AppShell } from '@/components/layout/app-shell';
+import { AppShell } from '@/components/layout';
 import { ViewpointWorkbench } from '@/components/viewpoints/viewpoint-workbench';
+
+export const metadata = { title: '新建观点 - A 股投研助手' };
 
 export default function NewViewpointPage() {
   return (

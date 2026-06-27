@@ -1,7 +1,9 @@
 import { PageHero } from '@/components/documents/page-hero';
-import { AppShell } from '@/components/layout/app-shell';
+import { AppShell } from '@/components/layout';
 import { ReviewWorkbench } from '@/components/reviews/review-workbench';
 import { getDocumentsByType } from '@/lib/server/documents';
+
+export const metadata = { title: '新建复盘 - A 股投研助手' };
 
 export default async function NewReviewPage() {
   const viewpoints = await getDocumentsByType('viewpoint');

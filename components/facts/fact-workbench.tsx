@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import type { VerifiableFact, FactState, FactWindow } from '@/lib/types/fact';
 import { factStateLabels } from '@/lib/types/fact';
 import { parseLines } from '@/lib/utils/strings';
+import { useToast } from '@/components/toast';
+import { ConfirmDialog } from '@/components/dialogs/confirm-dialog';
 
 function getSourceHref(docType: string, docId: string): string {
   const typePathMap: Record<string, string> = {
@@ -49,6 +51,7 @@ export function FactWorkbench() {
   const [facts, setFacts] = useState<VerifiableFact[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const { showToast } = useToast();
 
   // 新增表单
   const [claim, setClaim] = useState('');
@@ -57,8 +60,26 @@ export function FactWorkbench() {
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // 筛选
+  const [filter, setFilter] = useState('');
+
   // 编辑中的窗口
   const [editingWindows, setEditingWindows] = useState<Record<string, FactWindow[]>>({});
+
+  // 正在操作中的断言 ID（用于禁用按钮）
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  // 删除确认对话框
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  // 按 claim / stocks / themes 筛选
+  const filteredFacts = filter.trim()
+    ? facts.filter((f) =>
+        f.claim.toLowerCase().includes(filter.toLowerCase()) ||
+        f.stocks.some((s) => s.toLowerCase().includes(filter.toLowerCase())) ||
+        f.themes.some((t) => t.toLowerCase().includes(filter.toLowerCase())),
+      )
+    : facts;
 
   useEffect(() => {
     loadFacts();
@@ -102,15 +123,19 @@ export function FactWorkbench() {
       setStocksText('');
       setThemesText('');
       setNotes('');
+      showToast('断言已创建', 'success');
       await loadFacts();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '创建失败');
+      const msg = err instanceof Error ? err.message : '创建失败';
+      setError(msg);
+      showToast(msg, 'error');
     } finally {
       setSaving(false);
     }
   }
 
   async function handleUpdateState(id: string, state: FactState) {
+    setUpdatingId(id);
     try {
       const res = await fetch('/api/facts', {
         method: 'PUT',
@@ -119,15 +144,21 @@ export function FactWorkbench() {
       });
       const payload = await res.json();
       if (!res.ok || !payload.ok) throw new Error('更新失败');
+      showToast('状态已更新', 'success');
       await loadFacts();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '更新失败');
+      const msg = err instanceof Error ? err.message : '更新失败';
+      setError(msg);
+      showToast(msg, 'error');
+    } finally {
+      setUpdatingId(null);
     }
   }
 
   async function handleUpdateWindows(id: string) {
     const windows = editingWindows[id];
     if (!windows) return;
+    setUpdatingId(id);
     try {
       const res = await fetch('/api/facts', {
         method: 'PUT',
@@ -139,14 +170,19 @@ export function FactWorkbench() {
       const newEditing = { ...editingWindows };
       delete newEditing[id];
       setEditingWindows(newEditing);
+      showToast('验证结果已保存', 'success');
       await loadFacts();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '更新失败');
+      const msg = err instanceof Error ? err.message : '更新失败';
+      setError(msg);
+      showToast(msg, 'error');
+    } finally {
+      setUpdatingId(null);
     }
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('确认删除该断言？')) return;
+    setUpdatingId(id);
     try {
       const res = await fetch('/api/facts', {
         method: 'DELETE',
@@ -155,9 +191,15 @@ export function FactWorkbench() {
       });
       const payload = await res.json();
       if (!res.ok || !payload.ok) throw new Error('删除失败');
+      showToast('断言已删除', 'success');
       await loadFacts();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '删除失败');
+      const msg = err instanceof Error ? err.message : '删除失败';
+      setError(msg);
+      showToast(msg, 'error');
+    } finally {
+      setUpdatingId(null);
+      setDeleteConfirmId(null);
     }
   }
 
@@ -292,15 +334,34 @@ export function FactWorkbench() {
 
       {/* 断言列表 */}
       <section className="glass-card" style={{ gridColumn: '1 / -1' }}>
-        <div className="form-section-title" style={{ marginBottom: 16 }}>
-          断言列表（{facts.length} 条）
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+          <div className="form-section-title" style={{ margin: 0 }}>
+            断言列表（{facts.length} 条）
+          </div>
+          <input
+            type="text"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="搜索断言内容 / 股票 / 主题..."
+            style={{
+              flex: 1, minWidth: 200, maxWidth: 320,
+              border: '1px solid var(--border)', borderRadius: 10,
+              background: 'rgba(7, 12, 20, 0.88)', color: 'var(--text)',
+              font: 'inherit', fontSize: 13, padding: '6px 12px',
+            }}
+          />
+          {filter.trim() && (
+            <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+              筛选结果: {filteredFacts.length} / {facts.length}
+            </span>
+          )}
         </div>
 
         {loading ? (
           <div className="text-muted">加载中...</div>
-        ) : facts.length ? (
+        ) : filteredFacts.length ? (
           <div style={{ display: 'grid', gap: 12 }}>
-            {facts.map((fact) => (
+            {filteredFacts.map((fact) => (
               <article
                 key={fact.id}
                 className="checkbox-item result-card"
@@ -335,6 +396,7 @@ export function FactWorkbench() {
                       <select
                         value={fact.state}
                         onChange={(e) => handleUpdateState(fact.id, e.target.value as FactState)}
+                        disabled={updatingId === fact.id}
                         style={{
                           fontSize: 12,
                           padding: '4px 8px',
@@ -418,10 +480,11 @@ export function FactWorkbench() {
                           <button
                             className="primary-button"
                             style={{ fontSize: 12, padding: '4px 12px' }}
+                            disabled={updatingId === fact.id}
                             onClick={() => handleUpdateWindows(fact.id)}
                             type="button"
                           >
-                            保存验证
+                            {updatingId === fact.id ? '保存中...' : '保存验证'}
                           </button>
                           <button
                             className="primary-button"
@@ -430,6 +493,7 @@ export function FactWorkbench() {
                               padding: '4px 12px',
                               background: 'rgba(143, 164, 194, 0.06)',
                             }}
+                            disabled={updatingId === fact.id}
                             onClick={() => {
                               const newEditing = { ...editingWindows };
                               delete newEditing[fact.id];
@@ -459,6 +523,7 @@ export function FactWorkbench() {
                             padding: '3px 10px',
                             background: 'rgba(143, 164, 194, 0.06)',
                           }}
+                          disabled={updatingId === fact.id}
                           onClick={() => startEditWindows(fact)}
                           type="button"
                         >
@@ -472,10 +537,11 @@ export function FactWorkbench() {
                             background: 'rgba(255, 143, 143, 0.06)',
                             borderColor: 'rgba(255, 143, 143, 0.15)',
                           }}
-                          onClick={() => handleDelete(fact.id)}
+                          disabled={updatingId === deleteConfirmId}
+                          onClick={() => setDeleteConfirmId(fact.id)}
                           type="button"
                         >
-                          删除
+                          {updatingId === deleteConfirmId ? '删除中...' : '删除'}
                         </button>
                       </div>
                     )}
@@ -491,6 +557,17 @@ export function FactWorkbench() {
           </div>
         )}
       </section>
+
+      <ConfirmDialog
+        open={deleteConfirmId !== null}
+        title="确认删除"
+        message="确认删除该断言？此操作不可恢复。"
+        variant="danger"
+        confirmLabel="删除"
+        loading={updatingId === deleteConfirmId}
+        onConfirm={() => deleteConfirmId && handleDelete(deleteConfirmId)}
+        onCancel={() => setDeleteConfirmId(null)}
+      />
     </div>
   );
 }

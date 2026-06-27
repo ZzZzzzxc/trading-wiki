@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { z } from 'zod';
 import { getDeepSeekConfig } from '@/lib/ai/model';
@@ -75,7 +76,7 @@ export async function POST(request: Request) {
     // RAG 检索 + 源路由
     const route = await routeQuerySource(question);
     const searchQuery = route.rewrittenQuery || question;
-    const traceId = `rag_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    const traceId = `rag_${Date.now().toString(36)}_${crypto.randomUUID().slice(0, 8)}`;
     const rp = route.retrievalPlan;
     const hits = await retrieveRelevantChunks({
       query: searchQuery,
@@ -99,7 +100,11 @@ export async function POST(request: Request) {
       mmrLambda: 0.7,
     });
 
-    const ragContext = hits.length
+    // 检测 stance 冲突
+    const stances = hits.map((h) => h.chunk.stance).filter(Boolean);
+    const hasConflict = stances.length > 1 && new Set(stances).size > 1;
+
+    let ragContext = hits.length
       ? hits
           .map((hit, i) => {
             const type = getDocumentTypeLabel(hit.chunk.docType);
@@ -109,6 +114,19 @@ export async function POST(request: Request) {
           })
           .join('\n\n')
       : '暂无相关资料';
+
+    // 如果有 stance 冲突，在 context 末尾追加反证标记段落
+    if (hasConflict) {
+      const conflictNote = [
+        '',
+        '注意：以下检索结果中存在 stance 冲突（看多/看空/中性观点并存）：',
+        ...hits
+          .filter((h) => h.chunk.stance)
+          .map((h, i) => `- [${i + 1}] ${h.chunk.title}: ${h.chunk.stance}`),
+        '请在「分歧与反证」段落中分析这些不同立场。',
+      ].join('\n');
+      ragContext += '\n\n' + conflictNote;
+    }
 
     // 确定使用的消息（只传当前轮给 AI，避免上下文过长；历史已在 thread 文件中）
     const aiMessages: Array<{ role: string; content: string }> = [
@@ -292,7 +310,7 @@ export async function POST(request: Request) {
           buildLocalDocumentIndex()
             .then(() => readMarkdownDocument(qaFilePath))
             .then((doc) => upsertRagDocument(doc))
-            .catch(() => {});
+            .catch((err) => { console.error('[ask] QA 后索引更新失败:', err); });
 
           emit('done', {
             answer: fullAnswer,

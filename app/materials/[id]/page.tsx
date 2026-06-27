@@ -1,12 +1,16 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PageHero } from '@/components/documents/page-hero';
-import { AppShell } from '@/components/layout/app-shell';
+import { AppShell } from '@/components/layout';
 import { DeleteButton } from '@/components/documents/delete-button';
 import { MarkdownPreview } from '@/components/documents/markdown-preview';
 import { getDocumentById } from '@/lib/server/documents';
 import { evidenceLevelLabels } from '@/lib/types/fact';
 import type { EvidenceLevel } from '@/lib/types/fact';
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<{ title: string }> {
+  return { title: `${(await params).id} - 素材 - A 股投研助手` };
+}
 
 interface MaterialDetailPageProps {
   params: Promise<{ id: string }>;

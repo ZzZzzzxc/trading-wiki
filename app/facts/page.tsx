@@ -1,6 +1,8 @@
 import { PageHero } from '@/components/documents/page-hero';
-import { AppShell } from '@/components/layout/app-shell';
+import { AppShell } from '@/components/layout';
 import { FactWorkbench } from '@/components/facts/fact-workbench';
+
+export const metadata = { title: '可验证断言 - A 股投研助手' };
 
 export default function FactsPage() {
   return (

@@ -71,6 +71,8 @@ export interface RetrievalTrace {
     afterThemes: number;
     afterDateRange: number;
     afterTags: number;
+    /** 通过所有元数据过滤（docType+stock+theme+tag+date）的 chunk 数 */
+    afterAllFilters: number;
     afterScoreFilter: number;
   };
   /** rerank 前后排序变化（仅当 rerank 实际执行且改变排序时记录） */
@@ -89,8 +91,8 @@ export async function writeTrace(entry: RetrievalTrace): Promise<void> {
   try {
     await mkdir(TRACES_DIR, { recursive: true });
     await appendFile(TRACES_FILE, JSON.stringify(entry) + '\n', 'utf8');
-  } catch {
-    // 不阻塞主流程
+  } catch (err) {
+    console.error('[rag/trace] 写入检索 trace 失败:', err);
   }
 }
 
@@ -99,12 +101,18 @@ export async function writeTrace(entry: RetrievalTrace): Promise<void> {
 export async function readTraces(limit = 50): Promise<RetrievalTrace[]> {
   try {
     const source = await readFile(TRACES_FILE, 'utf8');
+    const seen = new Set<string>();
     return source
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean)
       .map((line) => JSON.parse(line) as RetrievalTrace)
       .reverse()
+      .filter((t) => {
+        if (seen.has(t.id)) return false;
+        seen.add(t.id);
+        return true;
+      })
       .slice(0, limit);
   } catch {
     return [];
@@ -112,6 +120,6 @@ export async function readTraces(limit = 50): Promise<RetrievalTrace[]> {
 }
 
 export async function readTraceById(id: string): Promise<RetrievalTrace | null> {
-  const traces = await readTraces(200);
+  const traces = await readTraces(500);
   return traces.find((t) => t.id === id) ?? null;
 }

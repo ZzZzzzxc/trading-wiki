@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { randomUUID } from 'node:crypto';
 import { retrieveRelevantChunks } from '@/lib/rag/retrieve';
+import { readTraceById } from '@/lib/rag/trace';
 import { routeQuerySource } from '@/lib/rag/source-router';
 import { documentTypes } from '@/lib/types/document';
 
@@ -26,6 +28,7 @@ export async function POST(request: Request) {
       // 走完整意图识别管线
       const route = await routeQuerySource(input.query);
       const searchQuery = route.rewrittenQuery || input.query;
+      const traceId = randomUUID();
 
       const result = await retrieveRelevantChunks({
         query: searchQuery,
@@ -41,7 +44,21 @@ export async function POST(request: Request) {
           : undefined,
         weights: route.weights,
         mmrLambda: 0.7,
+        traceId,
       });
+
+      // 从 trace 中读取 filterStats 和 rerankChanges
+      let filterStats = null;
+      let rerankChanges = null;
+      try {
+        const trace = await readTraceById(traceId);
+        if (trace) {
+          filterStats = trace.filterStats ?? null;
+          rerankChanges = trace.rerankChanges ?? null;
+        }
+      } catch {
+        // trace 读取失败不影响搜索结果
+      }
 
       return NextResponse.json({
         ok: true,
@@ -51,13 +68,27 @@ export async function POST(request: Request) {
           rewrittenQuery: route.rewrittenQuery,
           expandedQueries: route.expandedQueries,
           entities: route.entities,
+          filterStats,
+          rerankChanges,
         },
       });
     }
 
     // 原始检索（不走意图识别）
-    const result = await retrieveRelevantChunks(input);
-    return NextResponse.json({ ok: true, data: result });
+    const traceId = randomUUID();
+    const result = await retrieveRelevantChunks({ ...input, traceId });
+    let filterStats = null;
+    let rerankChanges = null;
+    try {
+      const trace = await readTraceById(traceId);
+      if (trace) {
+        filterStats = trace.filterStats ?? null;
+        rerankChanges = trace.rerankChanges ?? null;
+      }
+    } catch {
+      // trace 读取失败不影响搜索结果
+    }
+    return NextResponse.json({ ok: true, data: result, meta: { filterStats, rerankChanges } });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(

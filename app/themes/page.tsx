@@ -1,8 +1,10 @@
 import Link from 'next/link';
 import { FilterableDocumentList } from '@/components/documents/filterable-document-list';
 import { PageHero } from '@/components/documents/page-hero';
-import { AppShell } from '@/components/layout/app-shell';
+import { AppShell } from '@/components/layout';
 import { getDocumentsByType } from '@/lib/server/documents';
+
+export const metadata = { title: '产业链研究 - A 股投研助手' };
 
 export default async function ThemesPage() {
   const items = await getDocumentsByType('theme_research');

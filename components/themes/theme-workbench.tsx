@@ -7,6 +7,7 @@ import type { DocumentIndexItem } from '@/lib/types/document';
 import { useStreamAI } from '@/lib/hooks/use-stream-ai';
 import { ThinkingPanel } from '@/components/thinking-panel';
 import { getDocumentTypeBadgeClass, getDocumentTypeLabel } from '@/lib/utils/display';
+import { useToast } from '@/components/toast';
 import {
   parseLines,
   stringifyLines,
@@ -66,6 +67,7 @@ export function ThemeWorkbench(props: ThemeWorkbenchProps = {}) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const { showToast } = useToast();
 
   const {
     thinking,
@@ -79,6 +81,7 @@ export function ThemeWorkbench(props: ThemeWorkbenchProps = {}) {
     if (streamResult) {
       setResult(streamResult);
       setMessage('AI 生成完成，当前结果可继续编辑后再保存。');
+      showToast('AI 产业链研究生成完成', 'success');
     }
   }, [streamResult]);
 
@@ -185,10 +188,13 @@ export function ThemeWorkbench(props: ThemeWorkbenchProps = {}) {
         throw new Error(typeof payload.error === 'string' ? payload.error : '保存失败');
       }
 
+      showToast('产业链研究已保存', 'success');
       router.push(`/themes/${payload.data.id}`);
       router.refresh();
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : '保存失败');
+      const msg = saveError instanceof Error ? saveError.message : '保存失败';
+      setError(msg);
+      showToast(msg, 'error');
     } finally {
       setSaving(false);
     }

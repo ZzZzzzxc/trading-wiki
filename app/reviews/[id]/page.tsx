@@ -1,11 +1,20 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PageHero } from '@/components/documents/page-hero';
-import { AppShell } from '@/components/layout/app-shell';
+import { AppShell } from '@/components/layout';
 import { DeleteButton } from '@/components/documents/delete-button';
 import { MarkdownPreview } from '@/components/documents/markdown-preview';
 import { getDocumentById, getRelatedDocuments } from '@/lib/server/documents';
 import { RelatedDocuments } from '@/components/documents/related-documents';
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<{ title: string }> {
+  try {
+    const { id } = await params;
+    const document = await getDocumentById(decodeURIComponent(id));
+    if (document) return { title: `${document.title} - 复盘 - A 股投研助手` };
+  } catch {}
+  return { title: '复盘 - A 股投研助手' };
+}
 
 interface ReviewDetailPageProps {
   params: Promise<{

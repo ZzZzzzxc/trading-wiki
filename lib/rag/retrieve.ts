@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { embedText, cosineSimilarity, tokenizeForEmbedding } from '@/lib/rag/embed';
 import { rerankHits } from '@/lib/rag/rerank';
+import { computeBm25Score, tokenize as bm25Tokenize } from '@/lib/rag/bm25';
 import { writeTrace } from '@/lib/rag/trace';
 import { RAG_FILES } from '@/lib/storage/paths';
 import type { RagChunk, RagEmbedding, RagSearchHit, RetrieveOptions } from '@/lib/rag/types';
@@ -54,26 +55,13 @@ function buildMetadataTokens(chunk: RagChunk): Set<string> {
 
 function computeKeywordScore(queryTokens: string[], chunk: RagChunk): number {
   if (!queryTokens.length) return 0;
-  const titleText = chunk.title;
-  const headingText = chunk.headingPath.join(' ');
-  const contentText = chunk.content.slice(0, 800);
-  const titleTokens = new Set(tokenizeForEmbedding(titleText));
-  const headingTokens = new Set(tokenizeForEmbedding(headingText));
-  const contentTokens = new Set(tokenizeForEmbedding(contentText));
-  let score = 0;
 
-  for (const token of queryTokens) {
-    // 精确匹配 token
-    if (titleTokens.has(token)) { score += 1; continue; }
-    // 中文子串匹配（"京东方" 匹配 "京东方与康宁签订备忘录" 这类长标题）
-    if (/[一-鿿]/.test(token) && titleText.includes(token)) { score += 1; continue; }
-    if (headingTokens.has(token)) { score += 0.85; continue; }
-    if (/[一-鿿]/.test(token) && headingText.includes(token)) { score += 0.85; continue; }
-    if (contentTokens.has(token)) { score += 0.6; continue; }
-    if (/[一-鿿]/.test(token) && contentText.includes(token)) { score += 0.6; }
-  }
+  // BM25 评分：标题 45% + 段落标题 20% + 正文 35%，加权求和
+  const titleScore = computeBm25Score(queryTokens, bm25Tokenize(chunk.title), 50) * 0.45;
+  const headingScore = computeBm25Score(queryTokens, bm25Tokenize(chunk.headingPath.join(' ')), 50) * 0.20;
+  const contentScore = computeBm25Score(queryTokens, bm25Tokenize(chunk.content.slice(0, 1200)), 300) * 0.35;
 
-  return clampScore(score / queryTokens.length);
+  return clampScore(titleScore + headingScore + contentScore);
 }
 
 function computeMetadataScore(
@@ -227,8 +215,17 @@ export async function rankRagChunks(
   const topK = options.topK ?? 8;
   let result: RagSearchHit[];
   const rerankUsed = scored.length > topK;
-  const mmrLambda = options.mmrLambda;
-  const mmrUsed = mmrLambda !== undefined && mmrLambda < 1;
+  // MMR λ 动态配置：按意图调整多样性
+  const MMR_LAMBDA_BY_INTENT: Record<string, number> = {
+    chain:       0.5,  // 产业链：侧重多样性，展示不同环节
+    stock_deep:  0.8,  // 个股深挖：侧重精确性，减少噪音
+    verification: 0.6, // 验证：平衡
+    recency:     0.6,  // 时效：平衡
+    market_review: 0.7, // 复盘：默认
+    general:     0.7,  // 通用：默认
+  };
+  const mmrLambda = options.mmrLambda ?? MMR_LAMBDA_BY_INTENT[options.intent ?? ''] ?? 0.7;
+  const mmrUsed = mmrLambda < 1;
   const rerankChanges: Array<{ chunkId: string; title: string; beforeRank: number; afterRank: number; score: number }> = [];
   let tRerankStart = 0, tRerankEnd = 0, tEnd = 0;
 
@@ -259,9 +256,9 @@ export async function rankRagChunks(
     tEnd = performance.now();
   }
 
-  // Write retrieval trace (fire-and-forget)
+  // Write retrieval trace
   if (options.traceId) {
-    writeTrace({
+    await writeTrace({
       id: options.traceId,
       timestamp: new Date().toISOString(),
       query: options.originalQuery ?? options.query,
@@ -287,6 +284,7 @@ export async function rankRagChunks(
         afterThemes,
         afterTags,
         afterDateRange,
+        afterAllFilters: filtered.length,
         afterScoreFilter: scored.length,
       },
       rerankChanges: rerankChanges.length > 0 ? rerankChanges : undefined,
@@ -331,7 +329,7 @@ export async function retrieveRelevantChunks(
 
   const expandedHits = await Promise.all(
     expanded.map((eq) =>
-      rankRagChunks(chunks, embeddings, { ...options, query: eq }),
+      rankRagChunks(chunks, embeddings, { ...options, query: eq, traceId: undefined }),
     ),
   );
 

@@ -1,6 +1,8 @@
 import { PageHero } from '@/components/documents/page-hero';
-import { AppShell } from '@/components/layout/app-shell';
+import { AppShell } from '@/components/layout';
 import { XueqiuWorkbench } from '@/components/crawler/xueqiu/xueqiu-workbench';
+
+export const metadata = { title: '雪球采集 - A 股投研助手' };
 
 export default function XueqiuCrawlerPage() {
   return (

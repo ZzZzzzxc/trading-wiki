@@ -460,7 +460,7 @@ async function enrichRoute(route: SourceRoute, query: string): Promise<SourceRou
     if (route.entities.themes.length > 0 || route.entities.stocks.length > 0) {
       const base = route.rewrittenQuery || query;
       // 主题→相关公司
-      let relatedStocks: string[] = []; try { relatedStocks = await getRelatedStocks(route.entities.themes); } catch {}
+      let relatedStocks: string[] = []; try { relatedStocks = await getRelatedStocks(route.entities.themes); } catch (err) { console.error('[source-router] 主题→公司扩展失败:', err); }
       for (const stock of relatedStocks) {
         const eq = base + ' ' + stock;
         if (!route.expandedQueries?.includes(eq)) {
@@ -470,7 +470,7 @@ async function enrichRoute(route: SourceRoute, query: string): Promise<SourceRou
       }
       // 公司→相关主题
       const stockNames = route.entities.stocks.map(s => s.name);
-      let relatedThemes: string[] = []; try { relatedThemes = await getRelatedThemes(stockNames); } catch {}
+      let relatedThemes: string[] = []; try { relatedThemes = await getRelatedThemes(stockNames); } catch (err) { console.error('[source-router] 公司→主题扩展失败:', err); }
       for (const theme of relatedThemes) {
         const eq = base + ' ' + theme;
         if (!route.expandedQueries?.includes(eq)) {

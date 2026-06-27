@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import type { DocumentType } from '@/lib/types/document';
 import type { RagSearchHit } from '@/lib/rag/types';
 import { getDocumentTypeBadgeClass, getDocumentTypeLabel, docTypePriority, DOC_TYPE_OPTIONS } from '@/lib/utils/display';
 import { PageHero } from '@/components/documents/page-hero';
-import { AppShell } from '@/components/layout/app-shell';
+import { AppShell } from '@/components/layout';
 
 /** 文档类型 → 详情页 URL 前缀 */
 const docTypeUrlMap: Record<string, string> = {
@@ -146,6 +146,8 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [searched, setSearched] = useState(false);
+
+  useEffect(() => { document.title = '知识库搜索 - A 股投研助手'; }, []);
 
   function toggleDocType(type: DocumentType) {
     setDocTypes((current) =>

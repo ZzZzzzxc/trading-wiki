@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PageHero } from '@/components/documents/page-hero';
-import { AppShell } from '@/components/layout/app-shell';
+import { AppShell } from '@/components/layout';
 import { DocumentEditor } from '@/components/documents/document-editor';
 import { getDocumentById } from '@/lib/server/documents';
+
+export const metadata = { title: '编辑笔记 - A 股投研助手' };
 
 interface NoteEditPageProps {
   params: Promise<{ id: string }>;

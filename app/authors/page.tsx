@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import { PageHero } from '@/components/documents/page-hero';
-import { AppShell } from '@/components/layout/app-shell';
+import { AppShell } from '@/components/layout';
 import { getDocumentIndex } from '@/lib/server/documents';
+
+export const metadata = { title: '关注人管理 - A 股投研助手' };
 
 interface AuthorStats {
   author: string;

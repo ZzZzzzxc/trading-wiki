@@ -11,6 +11,7 @@ export interface RagChunk {
   date?: string;
   author?: string;
   platform?: string;
+  stance?: string;
   stocks?: string[];
   themes?: string[];
   tags?: string[];

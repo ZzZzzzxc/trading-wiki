@@ -8,6 +8,7 @@ import { useStreamAI } from '@/lib/hooks/use-stream-ai';
 import { ThinkingPanel } from '@/components/thinking-panel';
 import { getDocumentTypeBadgeClass } from '@/lib/utils/display';
 import { parseLines, stringifyLines, parseSourcedLines, stringifySourcedLines } from '@/lib/utils/strings';
+import { useToast } from '@/components/toast';
 
 interface SaveResponse {
   ok: boolean;
@@ -64,6 +65,7 @@ export function StockWorkbench({ viewpoints = [], materials = [], ...rest }: Sto
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const { showToast } = useToast();
 
   // 观点关联
   const [selectedViewpointIds, setSelectedViewpointIds] = useState<string[]>(rest.initialSelectedViewpointIds || []);
@@ -77,7 +79,7 @@ export function StockWorkbench({ viewpoints = [], materials = [], ...rest }: Sto
   } = useStreamAI<StockProfileResult>();
 
   useEffect(() => {
-    if (streamResult) { setResult(streamResult); setMessage('AI 生成完成，当前结果可继续编辑后再保存。'); }
+    if (streamResult) { setResult(streamResult); setMessage('AI 生成完成，当前结果可继续编辑后再保存。'); showToast('AI 个股档案生成完成', 'success'); }
   }, [streamResult]);
 
   useEffect(() => {
@@ -224,10 +226,13 @@ export function StockWorkbench({ viewpoints = [], materials = [], ...rest }: Sto
       if (!response.ok || !payload.ok || !payload.data) {
         throw new Error(typeof payload.error === 'string' ? payload.error : '保存个股档案失败');
       }
+      showToast('个股档案已保存', 'success');
       router.push(`/stocks/${payload.data.id}`);
       router.refresh();
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : '保存个股档案失败');
+      const msg = saveError instanceof Error ? saveError.message : '保存个股档案失败';
+      setError(msg);
+      showToast(msg, 'error');
     } finally {
       setSaving(false);
     }

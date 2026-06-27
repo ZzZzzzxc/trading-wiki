@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PageHero } from '@/components/documents/page-hero';
-import { AppShell } from '@/components/layout/app-shell';
+import { AppShell } from '@/components/layout';
 import { DeleteButton } from '@/components/documents/delete-button';
+import { ExportButton } from '@/components/documents/export-button';
 import { MarkdownPreview } from '@/components/documents/markdown-preview';
 import { RelatedDocuments } from '@/components/documents/related-documents';
 import { getDocumentById, getRelatedDocuments } from '@/lib/server/documents';
@@ -11,6 +12,15 @@ import {
   getViewpointStanceLabel,
   getViewpointTimeHorizonLabel,
 } from '@/lib/utils/display';
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<{ title: string }> {
+  try {
+    const { id } = await params;
+    const document = await getDocumentById(decodeURIComponent(id));
+    if (document) return { title: `${document.title} - 观点 - A 股投研助手` };
+  } catch {}
+  return { title: '观点 - A 股投研助手' };
+}
 
 interface ViewpointDetailPageProps {
   params: Promise<{
@@ -42,6 +52,7 @@ export default async function ViewpointDetailPage({
           description="以下内容来自本地 Markdown 文件。"
           extra={
             <>
+              <ExportButton filename={document.title} content={document.content} />
               <Link
                 href={`/viewpoints/${encodeURIComponent(document.id)}/edit`}
                 className="app-nav-link app-nav-link-active"

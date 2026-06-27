@@ -35,6 +35,7 @@ export function documentToIndexItem(document: MarkdownDocument): DocumentIndexIt
     status: frontmatter.status,
     last_reviewed: frontmatter.last_reviewed,
     confidence: frontmatter.confidence,
+    time_horizon: frontmatter.time_horizon,
     evidence_level: frontmatter.evidence_level,
   };
 }

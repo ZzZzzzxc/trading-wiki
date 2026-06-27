@@ -1,11 +1,13 @@
 import Link from 'next/link';
 import { FilterableDocumentList } from '@/components/documents/filterable-document-list';
 import { PageHero } from '@/components/documents/page-hero';
-import { AppShell } from '@/components/layout/app-shell';
+import { AppShell } from '@/components/layout';
 import { getDocumentsByType } from '@/lib/server/documents';
 import {
   getViewpointStanceLabel,
 } from '@/lib/utils/display';
+
+export const metadata = { title: '观点蒸馏 - A 股投研助手' };
 
 export default async function ViewpointsPage() {
   const items = await getDocumentsByType('viewpoint');

@@ -4,6 +4,21 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { DocumentFrontmatter } from '@/lib/types/document';
 import { parseLines } from '@/lib/utils/strings';
+import { useToast } from '@/components/toast';
+import { useUnsavedChangesWarning } from '@/lib/hooks/use-unsaved-changes';
+
+interface FrontmatterFieldOption {
+  value: string;
+  label: string;
+}
+
+interface FrontmatterField {
+  key: string;
+  label: string;
+  value: string;
+  type?: 'text' | 'textarea' | 'select';
+  options?: FrontmatterFieldOption[];
+}
 
 interface DocumentEditorProps {
   documentId: string;
@@ -11,12 +26,7 @@ interface DocumentEditorProps {
   initialFrontmatter: DocumentFrontmatter;
   initialContent: string;
   /** 额外的 frontmatter 编辑字段 */
-  frontmatterFields?: Array<{
-    key: string;
-    label: string;
-    value: string;
-    type?: 'text' | 'textarea';
-  }>;
+  frontmatterFields?: FrontmatterField[];
 }
 
 interface ApiResponse {
@@ -45,11 +55,28 @@ export function DocumentEditor({
     (initialFrontmatter.tags ?? []).join('\n'),
   );
   const [content, setContent] = useState(initialContent);
+
+  // Track editable frontmatter field values (3b)
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(frontmatterFields.map((f) => [f.key, f.value])),
+  );
+
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Dirty state for unsaved changes protection (3a)
+  const [dirty, setDirty] = useState(false);
+  useUnsavedChangesWarning(dirty);
+
+  const { showToast } = useToast();
+
+  function handleFieldChange(key: string, value: string) {
+    setFieldValues((prev) => ({ ...prev, [key]: value }));
+    setDirty(true);
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -57,47 +84,53 @@ export function DocumentEditor({
     setMessage('');
 
     try {
+      const body: Record<string, unknown> = {
+        id: documentId,
+        type: documentType,
+        title,
+        date: date || undefined,
+        themes: parseLines(themes),
+        stocks: parseLines(stocks),
+        tags: parseLines(tags),
+        content: content.trim(),
+        // type-specific frontmatter fields: use edited value or fall back to initial
+        author: fieldValues['author'] ?? initialFrontmatter.author,
+        platform: fieldValues['platform'] ?? initialFrontmatter.platform,
+        stance: fieldValues['stance'] ?? initialFrontmatter.stance,
+        time_horizon:
+          fieldValues['time_horizon'] ?? initialFrontmatter.time_horizon,
+        confidence:
+          fieldValues['confidence'] ?? initialFrontmatter.confidence,
+        market_phase:
+          fieldValues['market_phase'] ?? initialFrontmatter.market_phase,
+        stock_code:
+          fieldValues['stock_code'] ?? initialFrontmatter.stock_code,
+        mentioned_stocks: initialFrontmatter.mentioned_stocks,
+        mentioned_themes: initialFrontmatter.mentioned_themes,
+        core_stocks: initialFrontmatter.core_stocks,
+        source: fieldValues['source'] ?? initialFrontmatter.source,
+        rawText: undefined,
+        extraction: undefined,
+        generation: undefined,
+        rawMaterials: undefined,
+        personalObservation: undefined,
+        selectedViewpoints: undefined,
+        ragContext: undefined,
+        marketSummary: undefined,
+        sectorPerformance: undefined,
+        newsCatalysts: undefined,
+        companyInfo: undefined,
+        announcements: undefined,
+        news: undefined,
+        viewpointSummary: undefined,
+        stockName: undefined,
+        themeName: undefined,
+      };
+
       const response = await fetch('/api/documents', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: documentId,
-          type: documentType,
-          title,
-          date: date || undefined,
-          themes: parseLines(themes),
-          stocks: parseLines(stocks),
-          tags: parseLines(tags),
-          content: content.trim(),
-          // 保留原 frontmatter 中 type-specific 的字段
-          author: initialFrontmatter.author,
-          platform: initialFrontmatter.platform,
-          stance: initialFrontmatter.stance,
-          time_horizon: initialFrontmatter.time_horizon,
-          confidence: initialFrontmatter.confidence,
-          market_phase: initialFrontmatter.market_phase,
-          stock_code: initialFrontmatter.stock_code,
-          mentioned_stocks: initialFrontmatter.mentioned_stocks,
-          mentioned_themes: initialFrontmatter.mentioned_themes,
-          core_stocks: initialFrontmatter.core_stocks,
-          source: initialFrontmatter.source,
-          rawText: undefined,
-          extraction: undefined,
-          generation: undefined,
-          rawMaterials: undefined,
-          personalObservation: undefined,
-          selectedViewpoints: undefined,
-          ragContext: undefined,
-          marketSummary: undefined,
-          sectorPerformance: undefined,
-          newsCatalysts: undefined,
-          companyInfo: undefined,
-          announcements: undefined,
-          news: undefined,
-          viewpointSummary: undefined,
-          stockName: undefined,
-          themeName: undefined,
-        }),
+        body: JSON.stringify(body),
       });
       const payload = (await response.json()) as ApiResponse;
 
@@ -108,9 +141,13 @@ export function DocumentEditor({
       }
 
       setMessage('文档已更新');
+      setDirty(false);
+      showToast('文档已更新', 'success');
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '更新失败');
+      const msg = err instanceof Error ? err.message : '更新失败';
+      setError(msg);
+      showToast(msg, 'error');
     } finally {
       setSaving(false);
     }
@@ -135,6 +172,8 @@ export function DocumentEditor({
         );
       }
 
+      showToast('文档已删除', 'success');
+
       // 根据类型跳转回列表页
       const listRoutes: Record<string, string> = {
         viewpoint: '/viewpoints',
@@ -146,7 +185,9 @@ export function DocumentEditor({
       router.push(listRoutes[documentType] ?? '/dashboard');
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '删除失败');
+      const msg = err instanceof Error ? err.message : '删除失败';
+      setError(msg);
+      showToast(msg, 'error');
       setDeleting(false);
       setShowDeleteConfirm(false);
     }
@@ -158,7 +199,13 @@ export function DocumentEditor({
 
       <label className="form-field">
         <span>标题</span>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} />
+        <input
+          value={title}
+          onChange={(e) => {
+            setTitle(e.target.value);
+            setDirty(true);
+          }}
+        />
       </label>
 
       <div className="inline-grid">
@@ -167,20 +214,40 @@ export function DocumentEditor({
           <input
             type="date"
             value={date}
-            onChange={(e) => setDate(e.target.value)}
+            onChange={(e) => {
+              setDate(e.target.value);
+              setDirty(true);
+            }}
           />
         </label>
         {frontmatterFields.map((field) => (
           <label key={field.key} className="form-field">
             <span>{field.label}</span>
-            {field.type === 'textarea' ? (
+            {field.key === 'type' ? (
+              // type 字段始终只读
+              <input value={field.value} readOnly />
+            ) : field.type === 'select' && field.options ? (
+              <select
+                value={fieldValues[field.key] ?? field.value}
+                onChange={(e) => handleFieldChange(field.key, e.target.value)}
+              >
+                {field.options.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            ) : field.type === 'textarea' ? (
               <textarea
                 rows={2}
-                value={field.value}
-                readOnly
+                value={fieldValues[field.key] ?? field.value}
+                onChange={(e) => handleFieldChange(field.key, e.target.value)}
               />
             ) : (
-              <input value={field.value} readOnly />
+              <input
+                value={fieldValues[field.key] ?? field.value}
+                onChange={(e) => handleFieldChange(field.key, e.target.value)}
+              />
             )}
           </label>
         ))}
@@ -191,7 +258,10 @@ export function DocumentEditor({
         <textarea
           rows={2}
           value={themes}
-          onChange={(e) => setThemes(e.target.value)}
+          onChange={(e) => {
+            setThemes(e.target.value);
+            setDirty(true);
+          }}
         />
       </label>
 
@@ -200,7 +270,10 @@ export function DocumentEditor({
         <textarea
           rows={2}
           value={stocks}
-          onChange={(e) => setStocks(e.target.value)}
+          onChange={(e) => {
+            setStocks(e.target.value);
+            setDirty(true);
+          }}
         />
       </label>
 
@@ -209,7 +282,10 @@ export function DocumentEditor({
         <textarea
           rows={2}
           value={tags}
-          onChange={(e) => setTags(e.target.value)}
+          onChange={(e) => {
+            setTags(e.target.value);
+            setDirty(true);
+          }}
         />
       </label>
 
@@ -218,7 +294,10 @@ export function DocumentEditor({
         <textarea
           rows={20}
           value={content}
-          onChange={(e) => setContent(e.target.value)}
+          onChange={(e) => {
+            setContent(e.target.value);
+            setDirty(true);
+          }}
           style={{ fontFamily: 'monospace', fontSize: 13, lineHeight: 1.7 }}
         />
       </label>

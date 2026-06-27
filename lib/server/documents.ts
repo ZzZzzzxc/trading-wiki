@@ -3,6 +3,22 @@ import type { DocumentIndexItem, MarkdownDocument } from '@/lib/types/document';
 import { readDocumentIndex } from '@/lib/storage/index-store';
 import { readMarkdownDocument } from '@/lib/storage/md-store';
 
+export type TrendInfo = { direction: 'up' | 'down' | 'flat'; percent: number };
+
+function daysAgo(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+function computeTrend(curr: number, prev: number): TrendInfo | undefined {
+  if (curr === 0 && prev === 0) return undefined;
+  if (prev === 0) return { direction: 'up', percent: 100 };
+  const pct = Math.round(((curr - prev) / prev) * 100);
+  if (pct === 0) return { direction: 'flat', percent: 0 };
+  return { direction: pct > 0 ? 'up' : 'down', percent: Math.abs(pct) };
+}
+
 export async function getDocumentIndex(): Promise<DocumentIndexItem[]> {
   return readDocumentIndex();
 }
@@ -46,6 +62,7 @@ export async function getDashboardSummary() {
 
   // 近 7 天文档趋势
   const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
   const trend: Array<{ date: string; count: number }> = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date(now);
@@ -58,21 +75,69 @@ export async function getDashboardSummary() {
   // 待验证断言数 + 今日到期窗口
   let pendingFacts = 0;
   let dueTodayWindows = 0;
+  let pendingFactsTrend: TrendInfo | undefined;
+  let dueTodayWindowsTrend: TrendInfo | undefined;
   try {
     const { readFacts } = await import('@/lib/storage/fact-store');
     const facts = await readFacts();
     pendingFacts = facts.filter((f) => f.state === 'pending').length;
-    const today = new Date().toISOString().slice(0, 10);
     for (const f of facts) {
       if (f.state === 'pending') {
         dueTodayWindows += f.windows.filter(
-          (w) => !w.result && w.dueDate <= today,
+          (w) => !w.result && w.dueDate <= todayStr,
         ).length;
       }
     }
+
+    // 待验证断言趋势：本周新增 vs 上周新增
+    const weekAgo = daysAgo(7);
+    const twoWeeksAgo = daysAgo(14);
+    const newPendingThisWeek = facts.filter(
+      (f) => f.state === 'pending' && f.createdAt.slice(0, 10) > weekAgo,
+    ).length;
+    const newPendingLastWeek = facts.filter(
+      (f) =>
+        f.state === 'pending' &&
+        f.createdAt.slice(0, 10) > twoWeeksAgo &&
+        f.createdAt.slice(0, 10) <= weekAgo,
+    ).length;
+    pendingFactsTrend = computeTrend(newPendingThisWeek, newPendingLastWeek);
+
+    // 今日到期趋势：本周到期 vs 上周到期的不含结果窗口
+    let dueThisWeek = 0;
+    let dueLastWeek = 0;
+    for (const f of facts) {
+      for (const w of f.windows) {
+        if (!w.result) {
+          if (w.dueDate > weekAgo && w.dueDate <= todayStr) dueThisWeek++;
+          else if (w.dueDate > twoWeeksAgo && w.dueDate <= weekAgo) dueLastWeek++;
+        }
+      }
+    }
+    dueTodayWindowsTrend = computeTrend(dueThisWeek, dueLastWeek);
   } catch {
     // facts 文件可能不存在
   }
+
+  // 环比趋势：本周新增 vs 上周新增
+  const weekAgo = daysAgo(7);
+  const twoWeeksAgo = daysAgo(14);
+
+  const newDocsThisWeek = items.filter(
+    (i) => i.date && i.date > weekAgo && i.date <= todayStr,
+  ).length;
+  const newDocsLastWeek = items.filter(
+    (i) => i.date && i.date > twoWeeksAgo && i.date <= weekAgo,
+  ).length;
+  const totalDocumentsTrend = computeTrend(newDocsThisWeek, newDocsLastWeek);
+
+  const newVpsThisWeek = viewpointItems.filter(
+    (i) => i.date && i.date > weekAgo && i.date <= todayStr,
+  ).length;
+  const newVpsLastWeek = viewpointItems.filter(
+    (i) => i.date && i.date > twoWeeksAgo && i.date <= weekAgo,
+  ).length;
+  const totalViewpointsTrend = computeTrend(newVpsThisWeek, newVpsLastWeek);
 
   return {
     items,
@@ -87,6 +152,12 @@ export async function getDashboardSummary() {
     pendingFacts,
     dueTodayWindows,
     totalViewpoints: viewpointItems.length,
+    trends: {
+      totalDocuments: totalDocumentsTrend,
+      totalViewpoints: totalViewpointsTrend,
+      pendingFacts: pendingFactsTrend,
+      dueTodayWindows: dueTodayWindowsTrend,
+    },
   };
 }
 

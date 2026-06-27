@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { ConfirmDialog } from '@/components/dialogs';
 
 interface UserConfig {
   id: string;
@@ -43,6 +44,9 @@ export function XueqiuWorkbench() {
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ userId: string; postId: string } | null>(null);
+  const [extractConfirmOpen, setExtractConfirmOpen] = useState(false);
+  const [extractProgress, setExtractProgress] = useState<{ current: number; total: number } | null>(null);
 
   // 加载用户列表 + 已有帖子
   const loadData = useCallback(async () => {
@@ -164,20 +168,30 @@ export function XueqiuWorkbench() {
     });
   };
 
-  // 批量 AI 提取
-  const handleExtract = async () => {
+  // 批量 AI 提取（显示确认框）
+  const handleExtract = () => {
     const toExtract = posts.filter(p => selectedPostIds.has(p.id) && p.status === 'pending');
     if (toExtract.length === 0) {
       setError('没有可提取的帖子（请勾选状态为"待提取"的帖子）');
       return;
     }
+    setExtractConfirmOpen(true);
+  };
+
+  // 确认执行批量 AI 提取
+  const handleConfirmExtract = async () => {
+    setExtractConfirmOpen(false);
+    const toExtract = posts.filter(p => selectedPostIds.has(p.id) && p.status === 'pending');
+    if (toExtract.length === 0) return;
 
     setExtracting(true);
     setError(null);
+    setExtractProgress({ current: 0, total: toExtract.length });
     addLog({ type: 'info', message: `开始 AI 提取 ${toExtract.length} 条帖子...` });
 
     for (let i = 0; i < toExtract.length; i++) {
       const post = toExtract[i];
+      setExtractProgress({ current: i + 1, total: toExtract.length });
       addLog({ type: 'info', message: `[${i + 1}/${toExtract.length}] ${post.author}: "${post.text.slice(0, 30)}..."`, postId: post.id });
 
       try {
@@ -238,6 +252,7 @@ export function XueqiuWorkbench() {
       }
     }
 
+    setExtractProgress(null);
     addLog({ type: 'info', message: `提取完成` });
 
     // 刷新帖子列表
@@ -250,8 +265,16 @@ export function XueqiuWorkbench() {
     setExtracting(false);
   };
 
-  // 删除帖子
-  const handleDelete = async (userId: string, postId: string) => {
+  // 删除帖子（显示确认框）
+  const handleDelete = (userId: string, postId: string) => {
+    setDeleteTarget({ userId, postId });
+  };
+
+  // 确认删除
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    const { userId, postId } = deleteTarget;
+    setDeleteTarget(null);
     setDeleting(prev => new Set(prev).add(postId));
     try {
       const res = await fetch(`/api/crawler/xueqiu/posts?userId=${encodeURIComponent(userId)}&postId=${encodeURIComponent(postId)}`, {
@@ -331,6 +354,39 @@ export function XueqiuWorkbench() {
 
         {error && (
           <div className="status-message status-error">{error}</div>
+        )}
+
+        {/* 提取进度条 */}
+        {extractProgress && (
+          <div className="form-field">
+            <span>提取进度</span>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              fontSize: 13,
+              color: 'var(--muted)',
+            }}>
+              <div style={{
+                flex: 1,
+                height: 6,
+                borderRadius: 3,
+                background: 'rgba(143, 164, 194, 0.12)',
+                overflow: 'hidden',
+              }}>
+                <div style={{
+                  height: '100%',
+                  width: `${Math.round((extractProgress.current / extractProgress.total) * 100)}%`,
+                  borderRadius: 3,
+                  background: 'var(--accent)',
+                  transition: 'width 300ms ease',
+                }} />
+              </div>
+              <span style={{ whiteSpace: 'nowrap', fontWeight: 600 }}>
+                {extractProgress.current}/{extractProgress.total} 已完成
+              </span>
+            </div>
+          </div>
         )}
 
         {/* 操作日志 */}
@@ -485,6 +541,27 @@ export function XueqiuWorkbench() {
           </div>
         </div>
       </div>
+
+      {/* 删除确认对话框 */}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="确认删除"
+        message="确定要删除这篇帖子吗？此操作不可撤销。"
+        confirmLabel="删除"
+        variant="danger"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
+
+      {/* 提取确认对话框 */}
+      <ConfirmDialog
+        open={extractConfirmOpen}
+        title="确认 AI 提取"
+        message={`确定对 ${posts.filter(p => selectedPostIds.has(p.id) && p.status === 'pending').length} 篇帖子执行 AI 提取？\n\n注意：每次 AI 调用会产生 API 费用。提取结果会保存为观点文档，请后续审核。`}
+        confirmLabel="开始提取"
+        onConfirm={handleConfirmExtract}
+        onCancel={() => setExtractConfirmOpen(false)}
+      />
     </div>
   );
 }

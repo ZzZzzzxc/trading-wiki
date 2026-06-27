@@ -11,6 +11,7 @@ import { getDocumentTypeBadgeClass, getDocumentTypeLabel, docTypePriority } from
 import { useStreamAI } from '@/lib/hooks/use-stream-ai';
 import { ThinkingPanel } from '@/components/thinking-panel';
 import { parseLines, stringifyLines, parseSourcedLines, stringifySourcedLines } from '@/lib/utils/strings';
+import { useToast } from '@/components/toast';
 
 interface SaveResponse {
   ok: boolean;
@@ -151,6 +152,7 @@ export function ReviewWorkbench({ viewpoints }: ReviewWorkbenchProps) {
   const [ragLoading, setRagLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const { showToast } = useToast();
 
   const {
     thinking,
@@ -164,6 +166,7 @@ export function ReviewWorkbench({ viewpoints }: ReviewWorkbenchProps) {
     if (streamResult) {
       setResult(streamResult);
       setMessage('复盘结构化结果已生成，可继续人工编辑后再保存。');
+      showToast('AI 复盘生成完成', 'success');
     }
   }, [streamResult]);
 
@@ -321,12 +324,13 @@ export function ReviewWorkbench({ viewpoints }: ReviewWorkbenchProps) {
         );
       }
 
+      showToast('复盘已保存', 'success');
       router.push(`/reviews/${payload.data.id}`);
       router.refresh();
     } catch (saveError) {
-      setError(
-        saveError instanceof Error ? saveError.message : '保存复盘失败，请稍后重试。',
-      );
+      const msg = saveError instanceof Error ? saveError.message : '保存复盘失败，请稍后重试。';
+      setError(msg);
+      showToast(msg, 'error');
     } finally {
       setSaving(false);
     }

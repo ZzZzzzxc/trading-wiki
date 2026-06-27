@@ -118,4 +118,112 @@ describe('md-store', () => {
     expect(document.title).toBe('更新标题');
     expect(document.content).toBe('更新内容');
   });
+
+  describe('readMarkdownDocument error scenarios', () => {
+    it('throws for non-existent file', async () => {
+      const fakePath = '/tmp/non-existent-dir/some-file.md';
+      await expect(readMarkdownDocument(fakePath)).rejects.toThrow();
+    });
+
+    it('throws with error mentioning the path for non-existent file', async () => {
+      const fakePath = '/tmp/definitely-not-here-12345.md';
+      await expect(readMarkdownDocument(fakePath)).rejects.toThrow(
+        /definitely-not-here/,
+      );
+    });
+
+    it('handles empty file by returning empty frontmatter', async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), 'md-empty-'));
+      tempDirectories.push(directory);
+      const filePath = path.join(directory, 'empty.md');
+      await writeFile(filePath, '');
+
+      const doc = await readMarkdownDocument(filePath);
+      expect(doc.title).toBe('empty');
+      expect(doc.content).toBe('');
+    });
+
+    it('handles markdown without frontmatter gracefully', async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), 'md-nofm-'));
+      tempDirectories.push(directory);
+      const filePath = path.join(directory, 'plain.md');
+      await writeFile(filePath, '# 只有正文\n\n没有 frontmatter');
+
+      const doc = await readMarkdownDocument(filePath);
+      expect(doc.title).toBe('plain');
+      expect(doc.content).toContain('没有 frontmatter');
+      // frontmatter should be empty object
+      expect(Object.keys(doc.frontmatter)).toHaveLength(0);
+    });
+  });
+
+  describe('writeMarkdownDocument boundary', () => {
+    it('write then read back produces identical content', async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), 'md-roundtrip-'));
+      tempDirectories.push(directory);
+      const filePath = path.join(directory, 'roundtrip.md');
+
+      await writeMarkdownDocument({
+        absolutePath: filePath,
+        frontmatter: {
+          type: 'note',
+          title: '往返测试',
+          date: '2026-06-20',
+          themes: ['AI', '存储'],
+          stocks: ['002456', '300604'],
+          tags: ['测试', '往返'],
+        },
+        content: '# 往返测试\n\n写入并读回的内容。',
+      });
+
+      const doc = await readMarkdownDocument(filePath);
+      expect(doc.title).toBe('往返测试');
+      expect(doc.frontmatter.type).toBe('note');
+      expect(doc.frontmatter.date).toBe('2026-06-20');
+      expect(doc.frontmatter.themes).toEqual(['AI', '存储']);
+      expect(doc.frontmatter.stocks).toEqual(['002456', '300604']);
+      expect(doc.frontmatter.tags).toEqual(['测试', '往返']);
+      expect(doc.content).toContain('写入并读回的内容');
+    });
+
+    it('write with minimal frontmatter works correctly', async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), 'md-minimal-'));
+      tempDirectories.push(directory);
+      const filePath = path.join(directory, 'minimal.md');
+
+      await writeMarkdownDocument({
+        absolutePath: filePath,
+        frontmatter: { type: 'note', title: '极简' },
+        content: '仅有必要字段',
+      });
+
+      const doc = await readMarkdownDocument(filePath);
+      expect(doc.title).toBe('极简');
+      expect(doc.content).toBe('仅有必要字段');
+    });
+
+    it('write with empty content persists blank frontmatter fields', async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), 'md-empty-content-'));
+      tempDirectories.push(directory);
+      const filePath = path.join(directory, 'empty-content.md');
+
+      await writeMarkdownDocument({
+        absolutePath: filePath,
+        frontmatter: {
+          type: 'note',
+          title: '空内容',
+          date: '2026-06-15',
+          themes: [],
+          stocks: [],
+          tags: [],
+        },
+        content: '',
+      });
+
+      const doc = await readMarkdownDocument(filePath);
+      expect(doc.title).toBe('空内容');
+      expect(doc.content).toBe('');
+      expect(doc.frontmatter.themes).toEqual([]);
+    });
+  });
 });

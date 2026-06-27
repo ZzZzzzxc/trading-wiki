@@ -1,6 +1,8 @@
 import { PageHero } from '@/components/documents/page-hero';
-import { AppShell } from '@/components/layout/app-shell';
+import { AppShell } from '@/components/layout';
 import { RagDebugWorkbench } from '@/components/rag/rag-debug-workbench';
+
+export const metadata = { title: 'RAG 调试 - A 股投研助手' };
 
 export default function RagDebugPage() {
   return (

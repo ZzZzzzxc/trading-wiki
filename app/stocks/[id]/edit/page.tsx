@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PageHero } from '@/components/documents/page-hero';
-import { AppShell } from '@/components/layout/app-shell';
+import { AppShell } from '@/components/layout';
 import { StockWorkbench } from '@/components/stocks/stock-workbench';
 import { getDocumentById, getDocumentsByType } from '@/lib/server/documents';
 import { parseStockMarkdown } from '@/lib/stocks/markdown';
+
+export const metadata = { title: '编辑个股档案 - A 股投研助手' };
 
 interface StockEditPageProps {
   params: Promise<{ id: string }>;

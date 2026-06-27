@@ -215,7 +215,7 @@ async function saveViewpoint(input: z.infer<typeof createViewpointSchema>) {
         evidenceLevel: 'D', // 关注人观点默认为 D 级（社交媒体来源）
         windows,
         notes: claim.verify_by ? `验证依据: ${claim.verify_by}` : '',
-      }).catch(() => {}); // 不阻塞主流程
+      }).catch((err) => { console.error('[documents] viewpoint 事实创建失败:', err); });
     }
   }
 
@@ -324,7 +324,7 @@ async function saveThemeResearch(
         evidenceLevel: 'C', // 主题研究的推断默认 C 级
         windows,
         notes: claim.verify_by ? `验证依据: ${claim.verify_by}` : '',
-      }).catch(() => {}); // 不阻塞主流程
+      }).catch((err) => { console.error('[documents] theme 事实创建失败:', err); });
     }
   }
 
@@ -389,7 +389,7 @@ async function saveStockProfile(
         evidenceLevel: 'C', // 个股研究的推断默认 C 级
         windows,
         notes: claim.verify_by ? `验证依据: ${claim.verify_by}` : '',
-      }).catch(() => {}); // 不阻塞主流程
+      }).catch((err) => { console.error('[documents] stock 事实创建失败:', err); });
     }
   }
 
@@ -519,7 +519,7 @@ export async function POST(request: Request) {
     const docPath = path.join(process.cwd(), item.path);
     readMarkdownDocument(docPath)
       .then((doc) => upsertRagDocument(doc))
-      .catch(() => {});
+      .catch((err) => { console.error('[documents] 创建后 RAG 增量更新失败:', err); });
 
     return NextResponse.json({
       ok: true,
@@ -682,7 +682,7 @@ export async function PUT(request: Request) {
     // 增量更新 RAG
     readMarkdownDocument(absolutePath)
       .then((doc) => upsertRagDocument(doc))
-      .catch(() => {});
+      .catch((err) => { console.error('[documents] 更新后 RAG 增量更新失败:', err); });
 
     return NextResponse.json({
       ok: true,
@@ -734,7 +734,7 @@ export async function DELETE(request: Request) {
     // 重建索引
     await buildLocalDocumentIndex();
     // 增量删除 RAG 中该文档的 chunks
-    removeRagDocument(id).catch(() => {});
+    removeRagDocument(id).catch((err) => { console.error('[documents] RAG 文档删除失败:', err); });
 
     return NextResponse.json({
       ok: true,

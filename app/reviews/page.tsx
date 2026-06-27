@@ -1,8 +1,10 @@
 import Link from 'next/link';
 import { FilterableDocumentList } from '@/components/documents/filterable-document-list';
 import { PageHero } from '@/components/documents/page-hero';
-import { AppShell } from '@/components/layout/app-shell';
+import { AppShell } from '@/components/layout';
 import { getDocumentsByType } from '@/lib/server/documents';
+
+export const metadata = { title: '每日复盘 - A 股投研助手' };
 
 export default async function ReviewsPage() {
   const items = await getDocumentsByType('daily_review');

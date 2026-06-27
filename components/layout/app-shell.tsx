@@ -14,29 +14,31 @@ import {
   Users,
   Wrench,
 } from 'lucide-react';
+import { Breadcrumb } from './breadcrumb';
 
 const navGroups = [
   {
-    label: '核心功能',
+    label: '工作台',
     items: [
       { href: '/dashboard', label: '仪表盘', icon: LayoutDashboard },
       { href: '/ask', label: '知识库问答', icon: MessageSquare },
     ],
   },
   {
-    label: '素材库',
+    label: '数据源',
     items: [
       { href: '/materials', label: '原始素材', icon: Archive },
-      { href: '/viewpoints', label: '观点蒸馏', icon: Lightbulb },
-      { href: '/reviews', label: '每日复盘', icon: BarChart3 },
-      { href: '/notes', label: '个人笔记', icon: Notebook },
+      { href: '/crawler/xueqiu', label: '雪球采集', icon: Globe },
     ],
   },
   {
-    label: '投研文档',
+    label: '投研产出',
     items: [
+      { href: '/viewpoints', label: '观点蒸馏', icon: Lightbulb },
+      { href: '/reviews', label: '每日复盘', icon: BarChart3 },
       { href: '/themes', label: '产业链研究', icon: BookOpen },
       { href: '/stocks', label: '个股档案', icon: TrendingUp },
+      { href: '/notes', label: '个人笔记', icon: Notebook },
     ],
   },
   {
@@ -44,13 +46,7 @@ const navGroups = [
     items: [
       { href: '/facts', label: '可验证断言', icon: CheckCheck },
       { href: '/authors', label: '关注人管理', icon: Users },
-    ],
-  },
-  {
-    label: '工具',
-    items: [
       { href: '/search', label: '知识库搜索', icon: Search },
-      { href: '/crawler/xueqiu', label: '雪球采集', icon: Globe },
       { href: '/rag-debug', label: 'RAG 调试', icon: Wrench },
     ],
   },
@@ -103,6 +99,7 @@ export function AppShell({ currentPath, children }: AppShellProps) {
         </div>
       </aside>
       <div className="app-content">
+        <Breadcrumb path={currentPath} />
         <main>{children}</main>
       </div>
     </div>

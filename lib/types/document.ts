@@ -83,6 +83,8 @@ export interface DocumentIndexItem {
   last_reviewed?: string;
   /** 认知确定程度 */
   confidence?: string;
+  /** 时间维度（仅 viewpoint 类型有效） */
+  time_horizon?: string;
   /** 证据强度（仅 material 类型有效） */
   evidence_level?: string;
 }
