@@ -1,0 +1,15 @@
+{"type":"run_started","runId":"agent_mqxq4xx7_47e1cbca","userQuery":"京东方","config":{"depth":"quick","focus":"comprehensive","debate":false},"timestamp":"2026-06-28T11:47:15.260Z"}
+{"type":"step_started","runId":"agent_mqxq4xx7_47e1cbca","stepId":"a2ebe310-aab6-4e6b-b8d0-c587745a9299","name":"拆解研究方案","stepType":"planning","timestamp":"2026-06-28T11:47:15.260Z"}
+{"type":"step_finished","runId":"agent_mqxq4xx7_47e1cbca","stepId":"a2ebe310-aab6-4e6b-b8d0-c587745a9299","latencyMs":4097,"status":"success","timestamp":"2026-06-28T11:47:19.357Z"}
+{"type":"llm_call","runId":"agent_mqxq4xx7_47e1cbca","stepId":"a2ebe310-aab6-4e6b-b8d0-c587745a9299","prompt":{"system":"你是一个投研专家。输出JSON。\n\n你是一个A股投研专家。请分析用户的研究问题，将其拆解为2-5个具体可搜索的子问题。\n输出JSON格式：{ \"title\": \"研究标题\", \"subQuestions\": [\"子问题1\", \"子问题2\", ...] }\n研究问题: 京东方","user":"研究问题: 京东方"},"response":"{\n  \"title\": \"京东方（000725）深度研究\",\n  \"subQuestions\": [\n    \"京东方的主营业务构成及在全球显示面板行业的市场地位如何？\",\n    \"京东方最新财务报告（营收、净利润、毛利率、现金流）表现与近三年业绩趋势分析\",\n    \"显示面板行业当前供需格局、面板价格走势及主要竞争对手（如TCL华星、三星显示）对比\",\n    \"京东方在柔性OLED、MLED等新兴显示技术的研发进展及产能规划\",\n    \"京东方智慧医工、物联网创新等非显示业务的发展现状与盈利贡献\"\n  ]\n}","latencyMs":0,"timestamp":"2026-06-28T11:47:19.357Z"}
+{"type":"step_started","runId":"agent_mqxq4xx7_47e1cbca","stepId":"research_fa9bea85","name":"多步工具研究","stepType":"tool_call","timestamp":"2026-06-28T11:47:19.370Z"}
+{"type":"tool_call","runId":"agent_mqxq4xx7_47e1cbca","stepId":"research_fa9bea85","toolName":"search_knowledge_base","args":{},"result":null,"timestamp":"2026-06-28T11:47:22.223Z"}
+{"type":"tool_call","runId":"agent_mqxq4xx7_47e1cbca","stepId":"research_fa9bea85","toolName":"search_knowledge_base","args":{},"result":[],"timestamp":"2026-06-28T11:47:22.352Z"}
+{"type":"tool_call","runId":"agent_mqxq4xx7_47e1cbca","stepId":"research_fa9bea85","toolName":"get_facts","args":{},"result":null,"timestamp":"2026-06-28T11:47:24.003Z"}
+{"type":"tool_call","runId":"agent_mqxq4xx7_47e1cbca","stepId":"research_fa9bea85","toolName":"get_facts","args":{},"result":[],"timestamp":"2026-06-28T11:47:24.049Z"}
+{"type":"tool_call","runId":"agent_mqxq4xx7_47e1cbca","stepId":"research_fa9bea85","toolName":"search_knowledge_base","args":{},"result":null,"timestamp":"2026-06-28T11:47:28.236Z"}
+{"type":"tool_call","runId":"agent_mqxq4xx7_47e1cbca","stepId":"research_fa9bea85","toolName":"get_facts","args":{},"result":null,"timestamp":"2026-06-28T11:47:28.344Z"}
+{"type":"tool_call","runId":"agent_mqxq4xx7_47e1cbca","stepId":"research_fa9bea85","toolName":"search_knowledge_base","args":{},"result":[],"timestamp":"2026-06-28T11:47:28.455Z"}
+{"type":"tool_call","runId":"agent_mqxq4xx7_47e1cbca","stepId":"research_fa9bea85","toolName":"get_facts","args":{},"result":[],"timestamp":"2026-06-28T11:47:28.457Z"}
+{"type":"step_finished","runId":"agent_mqxq4xx7_47e1cbca","stepId":"research_fa9bea85","status":"success","latencyMs":9089,"timestamp":"2026-06-28T11:47:28.459Z"}
+{"type":"run_finished","runId":"agent_mqxq4xx7_47e1cbca","status":"success","latencyMs":13199,"timestamp":"2026-06-28T11:47:28.459Z"}

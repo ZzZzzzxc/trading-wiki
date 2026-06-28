@@ -1,0 +1,25 @@
+{"type":"run_started","runId":"agent_mqxpqwz6_310408b3","userQuery":"京东方","config":{"depth":"quick","focus":"comprehensive","debate":false},"timestamp":"2026-06-28T11:36:20.851Z"}
+{"type":"step_started","runId":"agent_mqxpqwz6_310408b3","stepId":"76ff1525-04b3-4892-aa41-b3141fdcbdd0","name":"拆解研究方案","stepType":"planning","timestamp":"2026-06-28T11:36:20.852Z"}
+{"type":"step_finished","runId":"agent_mqxpqwz6_310408b3","stepId":"76ff1525-04b3-4892-aa41-b3141fdcbdd0","latencyMs":3995,"status":"success","timestamp":"2026-06-28T11:36:24.847Z"}
+{"type":"llm_call","runId":"agent_mqxpqwz6_310408b3","stepId":"76ff1525-04b3-4892-aa41-b3141fdcbdd0","prompt":{"system":"你是一个投研专家。输出JSON。\n\n你是一个A股投研专家。请分析用户的研究问题，将其拆解为2-5个具体可搜索的子问题。\n输出JSON格式：{ \"title\": \"研究标题\", \"subQuestions\": [\"子问题1\", \"子问题2\", ...] }\n研究问题: 京东方","user":"研究问题: 京东方"},"response":"{\n  \"title\": \"京东方（BOE）深度研究分析\",\n  \"subQuestions\": [\n    \"京东方2024年度及2025年一季度主要财务数据与业绩变动原因\",\n    \"京东方在LCD与OLED面板领域的产能、出货量及全球市占率变化\",\n    \"面板行业当前供需格局、价格走势及对京东方盈利能力的影响\",\n    \"京东方在柔性OLED、车载显示、元宇宙等新业务的布局与进展\",\n    \"机构对京东方的最新评级、目标价及核心投资逻辑\"\n  ]\n}","latencyMs":0,"timestamp":"2026-06-28T11:36:24.848Z"}
+{"type":"step_started","runId":"agent_mqxpqwz6_310408b3","stepId":"research_d5c2d6c3","name":"多步工具研究","stepType":"tool_call","timestamp":"2026-06-28T11:36:24.859Z"}
+{"type":"tool_call","runId":"agent_mqxpqwz6_310408b3","stepId":"research_d5c2d6c3","toolName":"search_knowledge_base","args":{"query":"京东方 2024年度 2025年一季度 财务数据 业绩 营收 净利润"},"result":null,"timestamp":"2026-06-28T11:36:27.419Z"}
+{"type":"tool_call","runId":"agent_mqxpqwz6_310408b3","stepId":"research_d5c2d6c3","toolName":"search_knowledge_base","args":{"query":"京东方 LCD OLED 产能 出货量 全球市占率 2024 2025"},"result":null,"timestamp":"2026-06-28T11:36:27.824Z"}
+{"type":"tool_call","runId":"agent_mqxpqwz6_310408b3","stepId":"research_d5c2d6c3","toolName":"search_knowledge_base","args":{"query":"面板行业 供需格局 价格走势 LCD OLED 2024 2025"},"result":null,"timestamp":"2026-06-28T11:36:28.145Z"}
+{"type":"tool_call","runId":"agent_mqxpqwz6_310408b3","stepId":"research_d5c2d6c3","toolName":"search_knowledge_base","args":{},"result":[],"timestamp":"2026-06-28T11:36:28.353Z"}
+{"type":"tool_call","runId":"agent_mqxpqwz6_310408b3","stepId":"research_d5c2d6c3","toolName":"search_knowledge_base","args":{},"result":[],"timestamp":"2026-06-28T11:36:28.391Z"}
+{"type":"tool_call","runId":"agent_mqxpqwz6_310408b3","stepId":"research_d5c2d6c3","toolName":"search_knowledge_base","args":{},"result":[],"timestamp":"2026-06-28T11:36:28.407Z"}
+{"type":"tool_call","runId":"agent_mqxpqwz6_310408b3","stepId":"research_d5c2d6c3","toolName":"get_facts","args":{"query":"京东方 2024 年度 业绩 财务数据"},"result":null,"timestamp":"2026-06-28T11:36:29.948Z"}
+{"type":"tool_call","runId":"agent_mqxpqwz6_310408b3","stepId":"research_d5c2d6c3","toolName":"get_facts","args":{"query":"京东方 LCD OLED 市占率 产能"},"result":null,"timestamp":"2026-06-28T11:36:30.234Z"}
+{"type":"tool_call","runId":"agent_mqxpqwz6_310408b3","stepId":"research_d5c2d6c3","toolName":"search_knowledge_base","args":{"query":"京东方"},"result":null,"timestamp":"2026-06-28T11:36:30.443Z"}
+{"type":"tool_call","runId":"agent_mqxpqwz6_310408b3","stepId":"research_d5c2d6c3","toolName":"get_facts","args":{},"result":[],"timestamp":"2026-06-28T11:36:30.491Z"}
+{"type":"tool_call","runId":"agent_mqxpqwz6_310408b3","stepId":"research_d5c2d6c3","toolName":"get_facts","args":{},"result":[],"timestamp":"2026-06-28T11:36:30.496Z"}
+{"type":"tool_call","runId":"agent_mqxpqwz6_310408b3","stepId":"research_d5c2d6c3","toolName":"search_knowledge_base","args":{},"result":[],"timestamp":"2026-06-28T11:36:30.547Z"}
+{"type":"tool_call","runId":"agent_mqxpqwz6_310408b3","stepId":"research_d5c2d6c3","toolName":"search_knowledge_base","args":{"query":"面板 显示 行业 供需 价格"},"result":null,"timestamp":"2026-06-28T11:36:32.623Z"}
+{"type":"tool_call","runId":"agent_mqxpqwz6_310408b3","stepId":"research_d5c2d6c3","toolName":"search_knowledge_base","args":{"query":"BOE 京东方 显示面板"},"result":null,"timestamp":"2026-06-28T11:36:32.975Z"}
+{"type":"tool_call","runId":"agent_mqxpqwz6_310408b3","stepId":"research_d5c2d6c3","toolName":"search_knowledge_base","args":{"query":"OLED LCD 面板 2024"},"result":null,"timestamp":"2026-06-28T11:36:33.316Z"}
+{"type":"tool_call","runId":"agent_mqxpqwz6_310408b3","stepId":"research_d5c2d6c3","toolName":"search_knowledge_base","args":{},"result":[],"timestamp":"2026-06-28T11:36:33.509Z"}
+{"type":"tool_call","runId":"agent_mqxpqwz6_310408b3","stepId":"research_d5c2d6c3","toolName":"search_knowledge_base","args":{},"result":[],"timestamp":"2026-06-28T11:36:33.523Z"}
+{"type":"tool_call","runId":"agent_mqxpqwz6_310408b3","stepId":"research_d5c2d6c3","toolName":"search_knowledge_base","args":{},"result":[],"timestamp":"2026-06-28T11:36:33.538Z"}
+{"type":"step_finished","runId":"agent_mqxpqwz6_310408b3","stepId":"research_d5c2d6c3","status":"failed","latencyMs":8680,"timestamp":"2026-06-28T11:36:33.539Z"}
+{"type":"run_finished","runId":"agent_mqxpqwz6_310408b3","status":"success","latencyMs":12688,"timestamp":"2026-06-28T11:36:33.539Z"}

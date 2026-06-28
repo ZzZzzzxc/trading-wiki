@@ -3,7 +3,9 @@ import {
   Archive,
   BarChart3,
   BookOpen,
+  Bug,
   CheckCheck,
+  FlaskConical,
   Globe,
   LayoutDashboard,
   Lightbulb,
@@ -22,6 +24,7 @@ const navGroups = [
     items: [
       { href: '/dashboard', label: '仪表盘', icon: LayoutDashboard },
       { href: '/ask', label: '知识库问答', icon: MessageSquare },
+      { href: '/research', label: '深度研究', icon: FlaskConical },
     ],
   },
   {
@@ -48,6 +51,7 @@ const navGroups = [
       { href: '/authors', label: '关注人管理', icon: Users },
       { href: '/search', label: '知识库搜索', icon: Search },
       { href: '/rag-debug', label: 'RAG 调试', icon: Wrench },
+      { href: '/agent-debug', label: 'Agent 调试', icon: Bug },
     ],
   },
 ] as const;

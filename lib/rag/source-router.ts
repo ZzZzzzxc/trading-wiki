@@ -3,6 +3,8 @@ import type { DocumentType } from '@/lib/types/document';
 import type { RetrievalPlan, ParsedEntities } from '@/lib/rag/types';
 import { getDeepSeekConfig } from '@/lib/ai/model';
 import { extractEntities, getRelatedStocks, getRelatedThemes } from '@/lib/rag/dictionary';
+import { getFallbackChain } from '@/lib/rag/fallback-chain';
+import { generateMultiAngleQueries } from '@/lib/rag/multi-query';
 
 // ---- Types ----
 
@@ -277,7 +279,7 @@ function classifyViaRegex(query: string): QueryIntent & { _scores?: IntentScore[
 // ---- Retrieval Plan Builder ----
 
 /** 按意图生成检索计划 */
-function buildRetrievalPlan(intentName: string): RetrievalPlan {
+function buildRetrievalPlan(intentName: string, query?: string, entities?: ParsedEntities): RetrievalPlan {
   const plan: RetrievalPlan = {
     targetDocTypes: [],
     searchMode: 'hybrid',
@@ -324,6 +326,10 @@ function buildRetrievalPlan(intentName: string): RetrievalPlan {
       break;
   }
 
+  // 降级文档类型：当 primary 检索结果不足 topK 时使用
+  const chain = getFallbackChain(intentName);
+  plan.fallbackDocTypes = [...chain.fallback, ...chain.lastResort];
+
   return plan;
 }
 
@@ -353,7 +359,7 @@ function parseTimeRange(query: string): ParsedEntities['timeRange'] {
 
 // ---- Intent → Route Mapping ----
 
-function intentToRoute(intent: QueryIntent, method: 'llm' | 'regex'): SourceRoute {
+function intentToRoute(intent: QueryIntent, method: 'llm' | 'regex', query?: string): SourceRoute {
   const intentName = intent.intent;
   const weights = { ...WEIGHT_PROFILES[intentName] };
 
@@ -361,7 +367,7 @@ function intentToRoute(intent: QueryIntent, method: 'llm' | 'regex'): SourceRout
     intent: intentName,
     docTypeBoosts: {},
     weights,
-    retrievalPlan: buildRetrievalPlan(intentName),
+    retrievalPlan: buildRetrievalPlan(intentName, query),
     recencyFirst: false,
     expandRelated: false,
     method,
@@ -378,6 +384,17 @@ function intentToRoute(intent: QueryIntent, method: 'llm' | 'regex'): SourceRout
   // Multi-Query 扩展（LLM 提供时使用）
   if (intent.expanded && intent.expanded.length > 0) {
     route.expandedQueries = intent.expanded;
+  }
+
+  // 多角度查询扩展（非 recency 意图使用，补充 LLM 未覆盖的角度）
+  if (intentName !== 'recency' && query) {
+    const angleQueries = generateMultiAngleQueries(intentName, query);
+    for (const aq of angleQueries) {
+      if (!route.expandedQueries) route.expandedQueries = [];
+      if (!route.expandedQueries.includes(aq)) {
+        route.expandedQueries.push(aq);
+      }
+    }
   }
 
   switch (intentName) {
@@ -495,7 +512,7 @@ export async function routeQuerySource(query: string): Promise<SourceRoute> {
     const top = regexResult._scores[0];
     const second = regexResult._scores[1];
     if (top.score > 0 && top.score >= second.score * 2) {
-      const r1 = await enrichRoute(intentToRoute(regexResult, 'regex'), query);
+      const r1 = await enrichRoute(intentToRoute(regexResult, 'regex', query), query);
       r1.intentScores = regexResult._scores?.map(s => ({ intent: s.intent, score: s.score, matched: s.matched }));
       return r1;
     }
@@ -504,13 +521,13 @@ export async function routeQuerySource(query: string): Promise<SourceRoute> {
   // 3. 模糊或低分 → 尝试 LLM（3s 超时）
   const llmResult = await classifyViaLLM(query);
   if (llmResult) {
-    const r3 = await enrichRoute(intentToRoute(llmResult, 'llm'), query);
+    const r3 = await enrichRoute(intentToRoute(llmResult, 'llm', query), query);
     r3.intentScores = regexResult._scores?.map(s => ({ intent: s.intent, score: s.score, matched: s.matched }));
     return r3;
   }
 
   // 4. LLM 失败 → 用正则的最高分
-  const r2 = await enrichRoute(intentToRoute(regexResult, 'regex'), query);
+  const r2 = await enrichRoute(intentToRoute(regexResult, 'regex', query), query);
   r2.intentScores = regexResult._scores?.map(s => ({ intent: s.intent, score: s.score, matched: s.matched }));
   return r2;
 }

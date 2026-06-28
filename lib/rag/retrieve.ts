@@ -209,6 +209,13 @@ export async function rankRagChunks(
     })
     .filter((item) => item.finalScore > 0)
     .sort((left, right) => right.finalScore - left.finalScore);
+  if (scored.length === 0) {
+    const sample = filtered.slice(0, 3).map(c => {
+      const cv = embeddingMap.get(c.id) ?? [];
+      const vs = cosineSimilarity(queryVector, cv);
+      return { id: c.id.slice(0,30), vs, cvLen: cv.length };
+    });
+  }
   const tScore = performance.now();
 
   // Rerank + diversify pipeline
@@ -322,32 +329,61 @@ export async function retrieveRelevantChunks(
 
   // 主查询
   const mainHits = await rankRagChunks(chunks, embeddings, options);
-
-  // Multi-Query 扩展：多条查询分别检索，合并取最大分
-  const expanded = options.expandedQueries ?? [];
-  if (expanded.length === 0) return mainHits;
-
-  const expandedHits = await Promise.all(
-    expanded.map((eq) =>
-      rankRagChunks(chunks, embeddings, { ...options, query: eq, traceId: undefined }),
-    ),
-  );
-
-  // 合并去重：每个 chunk 取最大分
-  const merged = new Map<string, RagSearchHit>();
-  for (const hit of mainHits) {
-    merged.set(hit.chunk.id, hit);
+  if (mainHits.length === 0) {
   }
-  for (const hits of expandedHits) {
-    for (const hit of hits) {
-      const existing = merged.get(hit.chunk.id);
-      if (!existing || hit.finalScore > existing.finalScore) {
-        merged.set(hit.chunk.id, hit);
+
+  // 构建结果池：主查询 + Multi-Query 扩展合并
+  let resultPool: RagSearchHit[];
+
+  const expanded = options.expandedQueries ?? [];
+  if (expanded.length > 0) {
+    const expandedHits = await Promise.all(
+      expanded.map((eq) =>
+        rankRagChunks(chunks, embeddings, { ...options, query: eq, traceId: undefined }),
+      ),
+    );
+
+    // 合并去重：每个 chunk 取最大分
+    const merged = new Map<string, RagSearchHit>();
+    for (const hit of mainHits) {
+      merged.set(hit.chunk.id, hit);
+    }
+    for (const hits of expandedHits) {
+      for (const hit of hits) {
+        const existing = merged.get(hit.chunk.id);
+        if (!existing || hit.finalScore > existing.finalScore) {
+          merged.set(hit.chunk.id, hit);
+        }
+      }
+    }
+    resultPool = Array.from(merged.values())
+      .sort((a, b) => b.finalScore - a.finalScore);
+  } else {
+    resultPool = mainHits;
+  }
+
+  // 降级链：当结果不足 topK 且有降级文档类型配置时，执行降级检索
+  if (resultPool.length < topK && options.fallbackDocTypes?.length) {
+    const currentIds = new Set(resultPool.map(h => h.chunk.id));
+
+    const fallbackOptions: RetrieveOptions = {
+      ...options,
+      docTypes: options.fallbackDocTypes,
+      // 降级检索不使用 Multi-Query 扩展，避免重复
+      expandedQueries: undefined,
+      // 不使用 trace（避免覆盖主查询的 trace）
+      traceId: undefined,
+    };
+    const fallbackHits = await rankRagChunks(chunks, embeddings, fallbackOptions);
+
+    for (const hit of fallbackHits) {
+      if (!currentIds.has(hit.chunk.id)) {
+        resultPool.push(hit);
+        currentIds.add(hit.chunk.id);
+        if (resultPool.length >= topK) break;
       }
     }
   }
 
-  return Array.from(merged.values())
-    .sort((a, b) => b.finalScore - a.finalScore)
-    .slice(0, topK);
+  return resultPool.slice(0, topK);
 }

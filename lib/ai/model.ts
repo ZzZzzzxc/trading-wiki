@@ -135,36 +135,17 @@ export async function callDeepSeekStructuredOutput<T>(
     user: string;
   },
 ): Promise<T> {
-  const config = getDeepSeekConfig();
-  const response = await fetch(`${config.baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: config.model,
-      temperature: 0.2,
-      reasoning_effort: 'max',
-      response_format: { type: 'json_object' },
-      max_tokens: 393216,
-      messages: [
-        { role: 'system', content: prompts.system },
-        { role: 'user', content: prompts.user },
-      ],
-    }),
-  });
+  return providerRegistry.getForTask('structured').structuredOutput(schema, prompts.system, prompts.user);
+}
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`DeepSeek request failed: ${response.status} ${errorText}`);
-  }
+import { providerRegistry } from './provider-registry';
+import { DeepSeekProvider } from './providers/deepseek';
+import { KimiProvider } from './providers/kimi';
 
-  const payload = deepSeekChatCompletionSchema.parse(await response.json());
-  const content = payload.choices[0]?.message.content ?? '';
-  const jsonText = extractJsonObject(content);
-
-  const parsed = JSON.parse(jsonText);
-  const normalized = normalizeAiOutput(parsed);
-  return schema.parse(normalized);
+// 启动时自动注册
+if (!providerRegistry.get('deepseek')) {
+  providerRegistry.register('deepseek', new DeepSeekProvider(), ['generation', 'structured', 'stream']);
+}
+if (!providerRegistry.get('kimi')) {
+  providerRegistry.register('kimi', new KimiProvider(), ['vision']);
 }

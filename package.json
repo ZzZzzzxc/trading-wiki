@@ -15,8 +15,10 @@
     "seed": "tsx scripts/seed-sample-data.ts"
   },
   "dependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.0",
     "@ant-design/nextjs-registry": "^1.0.2",
     "@huggingface/transformers": "^4.2.0",
+    "ai": "^7.0.3",
     "antd": "^5.27.1",
     "glob": "^11.0.3",
     "gray-matter": "^4.0.3",

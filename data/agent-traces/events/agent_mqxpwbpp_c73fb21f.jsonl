@@ -1,0 +1,29 @@
+{"type":"run_started","runId":"agent_mqxpwbpp_c73fb21f","userQuery":"京东方","config":{"depth":"quick","focus":"comprehensive","debate":false},"timestamp":"2026-06-28T11:40:33.230Z"}
+{"type":"step_started","runId":"agent_mqxpwbpp_c73fb21f","stepId":"43229bdf-5476-4586-af83-9f699fc68ce6","name":"拆解研究方案","stepType":"planning","timestamp":"2026-06-28T11:40:33.230Z"}
+{"type":"step_finished","runId":"agent_mqxpwbpp_c73fb21f","stepId":"43229bdf-5476-4586-af83-9f699fc68ce6","latencyMs":2657,"status":"success","timestamp":"2026-06-28T11:40:35.887Z"}
+{"type":"llm_call","runId":"agent_mqxpwbpp_c73fb21f","stepId":"43229bdf-5476-4586-af83-9f699fc68ce6","prompt":{"system":"你是一个投研专家。输出JSON。\n\n你是一个A股投研专家。请分析用户的研究问题，将其拆解为2-5个具体可搜索的子问题。\n输出JSON格式：{ \"title\": \"研究标题\", \"subQuestions\": [\"子问题1\", \"子问题2\", ...] }\n研究问题: 京东方","user":"研究问题: 京东方"},"response":"{\n  \"title\": \"京东方深度投研分析\",\n  \"subQuestions\": [\n    \"京东方2024年及2025年一季度财报关键数据与业绩变动原因\",\n    \"京东方半导体显示主业供需格局、面板价格走势与产能情况\",\n    \"京东方在柔性OLED、MLED及物联网创新业务的最新进展与竞争力\",\n    \"京东方估值水平、机构持仓变化及券商近期观点与目标价\"\n  ]\n}","latencyMs":0,"timestamp":"2026-06-28T11:40:35.887Z"}
+{"type":"step_started","runId":"agent_mqxpwbpp_c73fb21f","stepId":"research_81095d54","name":"多步工具研究","stepType":"tool_call","timestamp":"2026-06-28T11:40:35.898Z"}
+{"type":"tool_call","runId":"agent_mqxpwbpp_c73fb21f","stepId":"research_81095d54","toolName":"search_knowledge_base","args":{"query":"京东方 2024年 2025年一季度 财报 业绩 营收 净利润"},"result":null,"timestamp":"2026-06-28T11:40:37.626Z"}
+{"type":"tool_call","runId":"agent_mqxpwbpp_c73fb21f","stepId":"research_81095d54","toolName":"search_knowledge_base","args":{"query":"京东方 半导体显示 面板价格 供需 产能 LCD OLED"},"result":null,"timestamp":"2026-06-28T11:40:38.012Z"}
+{"type":"tool_call","runId":"agent_mqxpwbpp_c73fb21f","stepId":"research_81095d54","toolName":"search_knowledge_base","args":{"query":"京东方 柔性OLED MLED 物联网 创新业务"},"result":null,"timestamp":"2026-06-28T11:40:38.359Z"}
+{"type":"tool_call","runId":"agent_mqxpwbpp_c73fb21f","stepId":"research_81095d54","toolName":"search_knowledge_base","args":{"query":"京东方 估值 机构持仓 券商 目标价 评级"},"result":null,"timestamp":"2026-06-28T11:40:38.670Z"}
+{"type":"tool_call","runId":"agent_mqxpwbpp_c73fb21f","stepId":"research_81095d54","toolName":"search_knowledge_base","args":{},"result":[],"timestamp":"2026-06-28T11:40:38.925Z"}
+{"type":"tool_call","runId":"agent_mqxpwbpp_c73fb21f","stepId":"research_81095d54","toolName":"search_knowledge_base","args":{},"result":[],"timestamp":"2026-06-28T11:40:38.925Z"}
+{"type":"tool_call","runId":"agent_mqxpwbpp_c73fb21f","stepId":"research_81095d54","toolName":"search_knowledge_base","args":{},"result":[],"timestamp":"2026-06-28T11:40:38.926Z"}
+{"type":"tool_call","runId":"agent_mqxpwbpp_c73fb21f","stepId":"research_81095d54","toolName":"search_knowledge_base","args":{},"result":[],"timestamp":"2026-06-28T11:40:38.926Z"}
+{"type":"tool_call","runId":"agent_mqxpwbpp_c73fb21f","stepId":"research_81095d54","toolName":"search_knowledge_base","args":{"query":"京东方 业绩 2024 年报 2025 一季报"},"result":null,"timestamp":"2026-06-28T11:40:40.339Z"}
+{"type":"tool_call","runId":"agent_mqxpwbpp_c73fb21f","stepId":"research_81095d54","toolName":"search_knowledge_base","args":{"query":"面板 行业 价格 走势 2024 2025 供需 格局"},"result":null,"timestamp":"2026-06-28T11:40:40.768Z"}
+{"type":"tool_call","runId":"agent_mqxpwbpp_c73fb21f","stepId":"research_81095d54","toolName":"search_knowledge_base","args":{"query":"OLED 柔性 显示 技术 MLED Mini LED"},"result":null,"timestamp":"2026-06-28T11:40:41.245Z"}
+{"type":"tool_call","runId":"agent_mqxpwbpp_c73fb21f","stepId":"research_81095d54","toolName":"search_knowledge_base","args":{"query":"券商 研报 京东方 估值 目标价"},"result":null,"timestamp":"2026-06-28T11:40:41.553Z"}
+{"type":"tool_call","runId":"agent_mqxpwbpp_c73fb21f","stepId":"research_81095d54","toolName":"search_knowledge_base","args":{},"result":[],"timestamp":"2026-06-28T11:40:41.802Z"}
+{"type":"tool_call","runId":"agent_mqxpwbpp_c73fb21f","stepId":"research_81095d54","toolName":"search_knowledge_base","args":{},"result":[],"timestamp":"2026-06-28T11:40:41.802Z"}
+{"type":"tool_call","runId":"agent_mqxpwbpp_c73fb21f","stepId":"research_81095d54","toolName":"search_knowledge_base","args":{},"result":[],"timestamp":"2026-06-28T11:40:41.802Z"}
+{"type":"tool_call","runId":"agent_mqxpwbpp_c73fb21f","stepId":"research_81095d54","toolName":"search_knowledge_base","args":{},"result":[],"timestamp":"2026-06-28T11:40:41.802Z"}
+{"type":"tool_call","runId":"agent_mqxpwbpp_c73fb21f","stepId":"research_81095d54","toolName":"search_knowledge_base","args":{"query":"京东方"},"result":null,"timestamp":"2026-06-28T11:40:43.369Z"}
+{"type":"tool_call","runId":"agent_mqxpwbpp_c73fb21f","stepId":"research_81095d54","toolName":"search_knowledge_base","args":{"query":"A股 面板 显示 行业"},"result":null,"timestamp":"2026-06-28T11:40:43.697Z"}
+{"type":"tool_call","runId":"agent_mqxpwbpp_c73fb21f","stepId":"research_81095d54","toolName":"search_knowledge_base","args":{"query":"科技 电子 半导体 显示面板"},"result":null,"timestamp":"2026-06-28T11:40:44.005Z"}
+{"type":"tool_call","runId":"agent_mqxpwbpp_c73fb21f","stepId":"research_81095d54","toolName":"search_knowledge_base","args":{},"result":[],"timestamp":"2026-06-28T11:40:44.226Z"}
+{"type":"tool_call","runId":"agent_mqxpwbpp_c73fb21f","stepId":"research_81095d54","toolName":"search_knowledge_base","args":{},"result":[],"timestamp":"2026-06-28T11:40:44.226Z"}
+{"type":"tool_call","runId":"agent_mqxpwbpp_c73fb21f","stepId":"research_81095d54","toolName":"search_knowledge_base","args":{},"result":[],"timestamp":"2026-06-28T11:40:44.226Z"}
+{"type":"step_finished","runId":"agent_mqxpwbpp_c73fb21f","stepId":"research_81095d54","status":"failed","latencyMs":8330,"timestamp":"2026-06-28T11:40:44.228Z"}
+{"type":"run_finished","runId":"agent_mqxpwbpp_c73fb21f","status":"success","latencyMs":10999,"timestamp":"2026-06-28T11:40:44.229Z"}

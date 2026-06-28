@@ -51,6 +51,8 @@ export interface RetrieveOptions {
   routeMethod?: 'llm' | 'regex' | 'none';
   /** trace 补充信息：源路由各意图评分明细 */
   intentScores?: Array<{ intent: string; score: number; matched: string[] }>;
+  /** 降级检索的文档类型 */
+  fallbackDocTypes?: DocumentType[];
 }
 
 export interface RagSearchHit {
@@ -94,6 +96,8 @@ export interface RetrievalPlan {
     dateTo?: string;
   };
   answerMode: AnswerMode;
+  /** 降级文档类型（当 primary 结果不足时使用） */
+  fallbackDocTypes?: DocumentType[];
 }
 
 /** 实体提取结果 */

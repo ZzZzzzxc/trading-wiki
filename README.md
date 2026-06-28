@@ -14,6 +14,8 @@
 - **个股档案** — 输入公司资料和公告，AI 生成结构化研报
 - **每日复盘** — 按固定框架生成 A 股复盘，支持 RAG 检索历史资料
 - **知识库问答** — 多轮对话 + RAG 检索 + 六段式回答（结论/证据链/分歧/验证/交易含义/来源）
+- **深度研究** — AI Research Agent：多步推理 + 工具调用 + 多角色辩论，自动搜索知识库、阅读文档、查询断言，生成结构化的深度研究报告（/research）
+- **Agent 调试** — 完整的 Agent 执行链路追踪：Step 时间线、LLM 调用记录、工具调用日志、错误诊断、反馈标记（/agent-debug）
 - **可验证断言** — AI 自动提取可验证声明，多窗口追踪判断准确性
 - **雪球采集** — 通过 Playwright 自动抓取关注用户的雪球帖子，审核后提取观点
 - **本地 RAG** — BGE 语义嵌入模型 + 混合评分检索 + Multi-Query + MMR + Rerank
@@ -30,6 +32,9 @@
 | AI 视觉 | Kimi k2.6 API（图片/PDF 分析） |
 | 嵌入 | Xenova/bge-small-zh-v1.5（本地 CPU，ONNX）|
 | Rerank | 本地 cross-encoder（onnx-community/bge-reranker-v2-m3-ONNX）→ DeepSeek API 回退 |
+| Agent 框架 | Vercel AI SDK（streamText + tool calling + maxSteps）|
+| LLM Provider | DeepSeek（主）+ Kimi（视觉），统一 Provider 抽象层 |
+| 关键词检索 | BM25 中文分词评分 + 词典正向最大匹配 |
 | 爬虫 | Playwright + 系统 Chrome |
 | 校验 | Zod |
 | UI | 纯 CSS（无 UI 框架）+ Lucide 图标 |
@@ -37,10 +42,12 @@
 ## 架构
 
 ```
-页面层 (app/**/page.tsx)        → 服务端组件取数据、客户端组件管交互
-API 路由层 (app/api/**/route.ts) → Zod 校验，编排 AI/存储/RAG
-业务逻辑层 (lib/**/*.ts)         → 纯函数：AI 调用、RAG 检索、Markdown 读写
-数据存储层 (data/ + rag/)        → 本地文件：Markdown、JSONL、JSON
+页面层 (app/**/page.tsx)              → 服务端组件取数据、客户端组件管交互
+API 路由层 (app/api/**/route.ts)      → Zod 校验，编排 AI/存储/RAG/Agent
+Agent 编排层 (lib/ai/ + lib/agents/)  → ResearchAgent (三阶段) + SimpleGraph DAG 引擎
+业务逻辑层 (lib/**/*.ts)              → AI 调用、RAG 检索、ToolRegistry、Provider 抽象
+基础设施层 (lib/ai/providers/)        → LLM Provider 接口 (DeepSeek/Kimi)
+数据存储层 (data/ + rag/)             → 本地文件：Markdown、JSONL、JSON
 ```
 
 ### RAG 管线
@@ -52,14 +59,58 @@ API 路由层 (app/api/**/route.ts) → Zod 校验，编排 AI/存储/RAG
   ↓
 Multi-Query 扩展（可选）
   ↓
-混合检索: 向量×权重 + 关键词 + 元数据 + 时效
+混合检索: 向量×权重 + BM25 关键词 + 元数据 + 时效
   ↓
-Rerank (DeepSeek 打分)
+本地 Cross-encoder Rerank (bge-reranker-v2-m3)
   ↓
-MMR 多样化 (λ=0.7)
+MMR 多样化 (λ=0.5~0.8 按意图动态)
   ↓
 注入 LLM → 六段式回答
 ```
+
+### Research Agent
+
+独立的深度研究页面 `/research`，三阶段执行：
+
+```
+用户问题
+  ↓
+① 规划 (planNode)
+    LLM 拆解为 2-5 个子问题（含 few-shot 示例引导）
+    temperature=0.2, JSON mode
+  ↓
+② 研究 (streamText + tool calling)
+    3 个工具：search_knowledge_base / read_document / get_facts
+    maxSteps=3/6/10（quick/standard/deep）
+    流式输出报告 + 工具调用日志
+    focus 参数预留（comprehensive/technical/fundamental/news）
+  ↓
+③ 辩论合成 (debateNode + synthesizeNode)
+    Bull（temperature=0.7, 15年经验乐观分析师, 要求引用数据）
+    ↔ Bear（temperature=0.7, 15年经验悲观分析师, 逐条反驳）
+    Neutral（temperature=0.5, 识别共识点与分歧点）
+    synthesizeNode → 综合报告含「多空共识与分歧」章节
+```
+
+**Agent prompt 清单：** 5 组 prompt（规划/研究主指令/Bull/Bear/Neutral/合成），分布在各节点文件中。
+
+```
+用户问题
+  ↓
+① 规划 (planNode)
+    LLM 拆解为 2-5 个子问题
+  ↓
+② 研究 (streamText + tool calling)
+    3 个工具：search_knowledge_base / read_document / get_facts
+    maxSteps=3/6/10（quick/standard/deep）
+    流式输出报告 + 工具调用日志
+  ↓
+③ 辩论合成 (debateNode + synthesizeNode)
+    Bull ↔ Bear 多轮对抗（1-3 轮）
+    中立综合 → 最终报告
+```
+
+**Agent 调试**：`/agent-debug` 页面查看每次执行的完整链路（Step 时间线、LLM 调用、工具调用、错误诊断、反馈标记）。
 
 ## 快速开始
 
@@ -123,11 +174,14 @@ HF_ENDPOINT=https://hf-mirror.com bash scripts/download-reranker-model.sh
 ```
 first-agent/
 ├── app/                        # Next.js App Router
-│   ├── api/ai/                 # AI 生成端点 (ask/stream/extract/generate)
+│   ├── api/ai/                 # AI 生成端点 (ask/stream/extract/generate/research)
+│   ├── api/agent-debug/        # Agent 调试 API (runs/feedback)
 │   ├── api/documents/          # 文档 CRUD
 │   ├── api/rag/                # RAG 调试 (search/stats/chunks/traces/preview-context/debug-answer)
 │   ├── api/upload/             # 文件上传
 │   ├── ask/                    # 知识库问答页面
+│   ├── research/               # 深度研究 (Research Agent)
+│   ├── agent-debug/            # Agent 调试
 │   ├── dashboard/              # 仪表盘
 │   ├── rag-debug/              # RAG 调试页面
 │   ├── themes/stocks/notes/... # 各文档类型的列表/详情/编辑页
@@ -138,7 +192,13 @@ first-agent/
 │   ├── stocks/                 # 个股档案工作台
 │   └── rag/                    # RAG 调试组件
 ├── lib/
-│   ├── ai/                     # AI 调用 + prompts + normalize
+│   ├── ai/                     # AI 调用 + Provider 抽象 + 工具系统
+│   │   ├── providers/          # LLM Provider 实现 (DeepSeek/Kimi)
+│   │   ├── skills/             # 工具注册中心 + 3 个研究工具
+│   ├── agents/                 # Agent 编排层
+│   │   ├── graph.ts            # SimpleGraph DAG 引擎
+│   │   ├── nodes/              # plan / debate / synthesize 节点
+│   ├── agent-debug/            # Agent 调试 (RunRecorder + 类型定义)
 │   ├── rag/                    # 完整 RAG 管线
 │   │   ├── chunk-md.ts         # 文档分块
 │   │   ├── embed.ts            # BGE 嵌入 + 哈希回退
@@ -219,6 +279,21 @@ npm run eval -- --no-mmr     # 对比评测：关闭 MMR
 ### RAG 调试
 
 打开 `/rag-debug` 页面：
+
+- **单次检索** — 输入 query，查看评分明细、Chunk 详情、Prompt 上下文预览、索引健康状态
+- **检索 Trace** — 查看生产环境每次问答的完整检索链路（意图/改写/评分/rerank/MMR）
+- **答案追溯** — 生成带引用标注的回答，检测无资料支撑的结论
+
+### Agent 调试
+
+打开 `/agent-debug` 页面：
+
+- **Run 列表** — 查看所有 Agent 执行记录（状态/耗时/步数/错误）
+- **Step 时间线** — 每一步的执行顺序、耗时、失败点
+- **LLM 调用详情** — 完整的 system prompt / user message / response
+- **工具调用日志** — 工具名、参数、返回值
+- **错误诊断** — 错误类型分类 + 可能原因 + 建议操作
+- **反馈标记** — 标注答案质量，沉淀 bad case
 
 - **单次检索** — 输入 query，查看评分明细、Chunk 详情、Prompt 上下文预览、索引健康状态
 - **检索 Trace** — 查看生产环境每次问答的完整检索链路（意图/改写/评分/rerank/MMR）
