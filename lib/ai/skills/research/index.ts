@@ -4,73 +4,172 @@ import { registerSkills } from '../loader';
 import { readMarkdownDocument } from '@/lib/storage/md-store';
 import { readFacts } from '@/lib/storage/fact-store';
 import { readDocumentIndex } from '@/lib/storage/index-store';
+import { runRagRetrieval } from '@/lib/rag/pipeline';
+import { FOCUS_RAG_OPTIONS, normalizeSnippet, type ResearchFocus } from '@/lib/ai/research-protocol';
+import type { DocumentType } from '@/lib/types/document';
+import type { RagChunk } from '@/lib/rag/types';
 import path from 'node:path';
-import { readdir } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
+import crypto from 'node:crypto';
+import { readFile, readdir } from 'node:fs/promises';
 import { DATA_DIRECTORIES, RAG_FILES } from '@/lib/storage/paths';
+
+const documentTypeSchema = z.enum([
+  'daily_review',
+  'viewpoint',
+  'theme_research',
+  'stock_profile',
+  'note',
+  'raw',
+  'qa',
+  'material',
+]);
+
+async function readRagChunks(): Promise<RagChunk[]> {
+  try {
+    const source = await readFile(RAG_FILES.chunks, 'utf8');
+    return source
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as RagChunk);
+  } catch {
+    return [];
+  }
+}
+
+function clampMaxChars(value: unknown): number {
+  const n = typeof value === 'number' && Number.isFinite(value) ? value : 2500;
+  return Math.min(Math.max(Math.floor(n), 600), 8000);
+}
+
+function resolveFocus(raw: Record<string, unknown>, ctxFocus: unknown): ResearchFocus {
+  const focus = (raw.focus || ctxFocus || 'comprehensive') as ResearchFocus;
+  if (['comprehensive', 'technical', 'fundamental', 'news'].includes(focus)) return focus;
+  return 'comprehensive';
+}
 
 const searchKnowledgeBase: SkillTool = {
   name: 'search_knowledge_base',
-  description: '在本地投研知识库中搜索与问题相关的资料。',
+  description: '在本地投研知识库中用RAG搜索与研究问题相关的资料，返回可引用的chunk、分数和traceId。',
   inputSchema: z.object({
     query: z.string().describe('搜索关键词，使用中文，尽可能具体'),
     topK: z.number().default(5).describe('返回结果数量'),
+    focus: z.enum(['comprehensive', 'technical', 'fundamental', 'news']).optional().describe('研究聚焦方向'),
+    subQuestion: z.string().optional().describe('当前研究子问题'),
+    docTypes: z.array(documentTypeSchema).optional().describe('限定文档类型'),
   }),
   skill: 'research',
-  execute: async (args: unknown) => {
+  execute: async (args: unknown, ctx) => {
     const raw = args as Record<string, unknown>;
     const query = (raw.query || raw.query_text || '') as string;
-    if (!query || !query.trim()) return [];
+    if (!query || !query.trim()) return { traceId: '', searchQuery: '', hits: [], error: '缺少搜索关键词' };
+
+    const focus = resolveFocus(raw, ctx.focus);
+    const topK = Math.min(Math.max(Number(raw.topK ?? 5) || 5, 1), 12);
+    const traceId = `${ctx.runId || 'research'}_tool_${crypto.randomUUID().slice(0, 8)}`;
+    const focusOptions = FOCUS_RAG_OPTIONS[focus];
+    const docTypes = Array.isArray(raw.docTypes) ? raw.docTypes as DocumentType[] : undefined;
 
     try {
-      const source = readFileSync(RAG_FILES.chunks, 'utf-8');
-      const firstSpace = query.indexOf(' ');
-      const searchKey = firstSpace > 0 ? query.slice(0, firstSpace) : query;
-      let start = 0;
-      while (start < source.length) {
-        const nl = source.indexOf('\n', start);
-        if (nl < 0) break;
-        const line = source.slice(start, nl).trim();
-        start = nl + 1;
-        if (!line) continue;
-        try {
-          const chunk = JSON.parse(line);
-          const title = (chunk.title || '') as string;
-          if (title.indexOf(searchKey) >= 0) {
-            return [{
-              id: (chunk.id as string) || '', docId: (chunk.docId as string) || '',
-              title: (chunk.title as string) || '', docType: (chunk.docType as string) || '',
-              content: ((chunk.content as string) || '').slice(0, 600),
-              score: 1, date: (chunk.date as string) || '',
-              heading: ((chunk.headingPath as string[]) || []).join(' > '),
-            }];
-          }
-        } catch { continue; }
-      }
-    } catch { /* ignore */ }
-    return [];
+      const rag = await runRagRetrieval(query, {
+        traceId,
+        topK,
+        contextTopK: topK,
+        maxChunksPerDoc: 2,
+        docTypes,
+        sourceBoosts: focusOptions.sourceBoosts,
+        weights: focusOptions.weights,
+      });
+
+      return {
+        traceId,
+        route: {
+          intent: rag.route.intent,
+          method: rag.route.method,
+          targetDocTypes: rag.route.retrievalPlan.targetDocTypes,
+          expandedQueries: rag.route.expandedQueries,
+        },
+        searchQuery: rag.searchQuery,
+        subQuestion: (raw.subQuestion as string | undefined) || query,
+        hits: rag.contextHits.map((hit) => {
+          const snippet = normalizeSnippet(hit.chunk.content);
+          return {
+            chunkId: hit.chunk.id,
+            id: hit.chunk.id,
+            docId: hit.chunk.docId,
+            title: hit.chunk.title,
+            docType: hit.chunk.docType,
+            heading: hit.chunk.headingPath.join(' > ') || '正文',
+            date: hit.chunk.date,
+            score: Number(hit.finalScore.toFixed(4)),
+            snippet,
+            content: snippet,
+          };
+        }),
+      };
+    } catch (error) {
+      return {
+        traceId,
+        searchQuery: query,
+        subQuestion: (raw.subQuestion as string | undefined) || query,
+        hits: [],
+        error: error instanceof Error ? error.message : 'RAG检索失败',
+      };
+    }
   },
 };
 
 const readDocument: SkillTool = {
   name: 'read_document',
-  description: '根据文档ID读取某篇文档的完整内容。',
+  description: '根据文档ID或chunkId读取知识库内容。默认限长返回，不读取超长全文。',
   inputSchema: z.object({
-    docId: z.string().describe('文档ID（驼峰命名）'),
+    docId: z.string().optional().describe('文档ID（驼峰命名）'),
     doc_id: z.string().optional().describe('文档ID（下划线命名，兼容）'),
+    chunkId: z.string().optional().describe('RAG chunk ID'),
+    chunk_id: z.string().optional().describe('RAG chunk ID（下划线命名，兼容）'),
+    maxChars: z.number().default(2500).describe('最大返回字符数，默认2500，上限8000'),
   }),
   skill: 'research',
   execute: async (args: unknown) => {
     const raw = args as Record<string, unknown>;
     const docId = (raw.docId || raw.doc_id || '') as string;
-    if (!docId) return { error: '缺少文档ID' };
+    const chunkId = (raw.chunkId || raw.chunk_id || '') as string;
+    const maxChars = clampMaxChars(raw.maxChars);
+    if (!docId && !chunkId) return { error: '缺少文档ID或chunkId' };
+
+    if (chunkId) {
+      const chunks = await readRagChunks();
+      const chunk = chunks.find((item) => item.id === chunkId);
+      if (!chunk) return { chunkId, error: '未找到chunk' };
+
+      const content = chunk.content.slice(0, maxChars);
+      return {
+        id: chunk.docId,
+        docId: chunk.docId,
+        chunkId: chunk.id,
+        title: chunk.title,
+        heading: chunk.headingPath.join(' > ') || '正文',
+        docType: chunk.docType,
+        content,
+        truncated: chunk.content.length > content.length,
+        maxChars,
+      };
+    }
 
     try {
       const index = await readDocumentIndex();
       const entry = index.find((item) => item.id === docId || item.path.includes(docId));
       if (entry) {
         const doc = await readMarkdownDocument(path.resolve(entry.path));
-        return { id: docId, title: doc.title, content: doc.content, frontmatter: doc.frontmatter as unknown as Record<string, unknown> };
+        const content = doc.content.slice(0, maxChars);
+        return {
+          id: docId,
+          title: doc.title,
+          content,
+          truncated: doc.content.length > content.length,
+          maxChars,
+          frontmatter: doc.frontmatter as unknown as Record<string, unknown>,
+        };
       }
     } catch { /* ignore */ }
 
@@ -80,7 +179,15 @@ const readDocument: SkillTool = {
         const file = files.find((f) => f.startsWith(docId) || f.includes(docId));
         if (file) {
           const doc = await readMarkdownDocument(path.join(dir, file));
-          return { id: docId, title: doc.title, content: doc.content, frontmatter: doc.frontmatter as unknown as Record<string, unknown> };
+          const content = doc.content.slice(0, maxChars);
+          return {
+            id: docId,
+            title: doc.title,
+            content,
+            truncated: doc.content.length > content.length,
+            maxChars,
+            frontmatter: doc.frontmatter as unknown as Record<string, unknown>,
+          };
         }
       } catch { continue; }
     }

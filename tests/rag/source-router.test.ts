@@ -32,10 +32,9 @@ describe('routeQuerySource（LLM + regex 回退）', () => {
     expect(route.docTypeBoosts.daily_review).toBeGreaterThan(1);
   });
 
-  test('普通问题 → 无特殊加权', async () => {
+  test('普通问题 → 仅保留 QA 历史降权', async () => {
     const route = await routeQuerySource('介绍一下半导体设备行业的基本情况');
-    const hasBoosts = Object.keys(route.docTypeBoosts).length > 0;
-    expect(hasBoosts).toBe(false);
+    expect(route.docTypeBoosts).toEqual({ qa: 0.3 });
   });
 
   test('超长查询不会被截断导致分类失败', async () => {

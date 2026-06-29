@@ -17,6 +17,7 @@ describe('viewpoint markdown builder', () => {
         reasoning: [{text: '订单预期改善可能带来估值抬升', source: 'original'}],
         risks: [{text: '订单兑现不及预期', source: 'original'}],
         counter_evidence: [{text: '如果全球半导体周期见顶，设备需求可能放缓', source: 'original'}],
+        verifiable_claims: [{claim: '订单预期改善', verify_by: '后续订单公告', suggested_window: '30日'}],
         confidence: 'medium',
       },
     });

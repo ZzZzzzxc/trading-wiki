@@ -58,6 +58,55 @@ const ANGLE_GENERATORS: Record<string, AngleGenerator> = {
     if (stockName) angles.push(`${stockName} 业绩 订单 兑现 验证`);
     return angles;
   },
+
+  value_analysis: (query, entities) => {
+    const stockName = entities?.stocks?.[0]?.name ?? '';
+    const themes = entities?.themes ?? [];
+    const angles: string[] = [];
+
+    // 成长性角度
+    angles.push(`${query} 成长性 增速 空间 天花板`);
+    // 竞争格局角度
+    if (themes.length > 0) angles.push(`${themes[0]} 竞争格局 龙头 市占率`);
+    else if (stockName) angles.push(`${stockName} 竞争格局 优势 壁垒`);
+    // 估值角度
+    angles.push(`${query} 估值 PE PEG 性价比`);
+    // 催化角度
+    angles.push(`${query} 催化 催化剂 拐点`);
+
+    return angles;
+  },
+
+  policy_impact: (query, entities) => {
+    const themes = entities?.themes ?? [];
+    const angles: string[] = [];
+
+    // 政策内容角度
+    angles.push(`${query} 政策 内容 细则 落地`);
+    // 影响角度
+    if (themes.length > 0) angles.push(`${themes[0]} 影响 利好 利空`);
+    else angles.push(`${query} 影响 受益 受损`);
+    // 政策对比角度
+    angles.push(`${query} 对比 历史 力度`);
+
+    return angles;
+  },
+
+  risk_alert: (query, entities) => {
+    const stockName = entities?.stocks?.[0]?.name ?? '';
+    const angles: string[] = [];
+
+    // 风险事件角度
+    angles.push(`${query} 风险 违约 警示`);
+    // 财务角度
+    if (stockName) angles.push(`${stockName} 财务 审计 负债 现金流`);
+    // 监管角度
+    angles.push(`${query} 监管 处罚 立案`);
+    // 市场角度
+    angles.push(`${query} 股价 跌幅 评级 下调`);
+
+    return angles;
+  },
 };
 
 /**

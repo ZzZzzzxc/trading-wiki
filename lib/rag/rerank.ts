@@ -184,15 +184,17 @@ async function apiRerank(
 export async function rerankHits(
   query: string,
   hits: RagSearchHit[],
+  options: { topK?: number; candidateLimit?: number } = {},
 ): Promise<RagSearchHit[]> {
   if (hits.length <= 1) return hits;
 
   // 1. 去重
   const deduped = dedupByDocId(hits);
 
-  // 2. 裁剪候选集（15 个平衡速度与质量）
-  const candidates = deduped.slice(0, 15);
-  const topK = Math.min(8, candidates.length);
+  // 2. 裁剪候选集，默认保留 30 个用于高召回场景。
+  const candidateLimit = options.candidateLimit ?? 30;
+  const candidates = deduped.slice(0, candidateLimit);
+  const topK = Math.min(options.topK ?? candidates.length, candidates.length);
 
   // 3. 缓存命中
   const hitIds = candidates.map(h => h.chunk.id);

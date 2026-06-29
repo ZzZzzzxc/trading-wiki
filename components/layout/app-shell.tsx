@@ -31,17 +31,17 @@ const navGroups = [
     label: '数据源',
     items: [
       { href: '/materials', label: '原始素材', icon: Archive },
+      { href: '/viewpoints', label: '观点蒸馏', icon: Lightbulb },
+      { href: '/reviews', label: '每日复盘', icon: BarChart3 },
+      { href: '/notes', label: '个人笔记', icon: Notebook },
       { href: '/crawler/xueqiu', label: '雪球采集', icon: Globe },
     ],
   },
   {
     label: '投研产出',
     items: [
-      { href: '/viewpoints', label: '观点蒸馏', icon: Lightbulb },
-      { href: '/reviews', label: '每日复盘', icon: BarChart3 },
       { href: '/themes', label: '产业链研究', icon: BookOpen },
       { href: '/stocks', label: '个股档案', icon: TrendingUp },
-      { href: '/notes', label: '个人笔记', icon: Notebook },
     ],
   },
   {

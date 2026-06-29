@@ -4,7 +4,7 @@ import { rankRagChunks } from '@/lib/rag/retrieve';
 import type { RagChunk, RagEmbedding } from '@/lib/rag/types';
 
 describe('rank rag chunks', () => {
-  it('ranks semantically closer chunks higher', () => {
+  it('ranks semantically closer chunks higher', async () => {
     const chunks: RagChunk[] = [
       {
         id: 'c1',
@@ -31,12 +31,14 @@ describe('rank rag chunks', () => {
         tags: ['笔记'],
       },
     ];
-    const embeddings: RagEmbedding[] = chunks.map((chunk) => ({
-      id: chunk.id,
-      vector: embedText(`${chunk.title} ${chunk.headingPath.join(' ')} ${chunk.content}`),
-    }));
+    const embeddings: RagEmbedding[] = await Promise.all(
+      chunks.map(async (chunk) => ({
+        id: chunk.id,
+        vector: await embedText(`${chunk.title} ${chunk.headingPath.join(' ')} ${chunk.content}`),
+      })),
+    );
 
-    const results = rankRagChunks(chunks, embeddings, {
+    const results = await rankRagChunks(chunks, embeddings, {
       query: '长川科技上涨逻辑',
       topK: 2,
     });

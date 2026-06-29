@@ -22,6 +22,8 @@ interface RagSearchResponse {
       afterThemes: number;
       afterDateRange: number;
       afterTags: number;
+      afterAuthor: number;
+      afterStance: number;
       afterAllFilters: number;
       afterScoreFilter: number;
     } | null;
@@ -32,6 +34,10 @@ interface RagSearchResponse {
       afterRank: number;
       score: number;
     }> | null;
+    sourceBoosts?: Record<string, number>;
+    retrievalPlan?: RetrievalTrace['retrievalPlan'] | null;
+    expandedAddedCount?: number;
+    fallbackAddedCount?: number;
   };
 }
 
@@ -62,6 +68,18 @@ interface FillSearchData {
   query: string;
   intent?: string;
   weights?: Record<string, number>;
+  rewrittenQuery?: string;
+  expandedQueries?: string[];
+  sourceBoosts?: Record<string, number>;
+  fallbackDocTypes?: DocumentType[];
+  routeMethod?: 'llm' | 'regex' | 'none';
+  intentScores?: Array<{ intent: string; score: number; matched: string[] }>;
+  docTypes?: DocumentType[];
+  stocks?: string[];
+  themes?: string[];
+  tags?: string[];
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 // ---- Index Health Card ----
@@ -295,14 +313,31 @@ function SearchTab({ fillSearchData, onFillSearchConsumed }: { fillSearchData?: 
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Trace fill refs
-  const extraParamsRef = useRef<{ intent?: string; weights?: Record<string, number> }>({});
+  const extraParamsRef = useRef<Omit<FillSearchData, 'query'>>({});
   const lastFilledRef = useRef('');
 
   // Fill search from trace
   useEffect(() => {
     if (fillSearchData && fillSearchData.query !== lastFilledRef.current) {
       setQuery(fillSearchData.query);
-      extraParamsRef.current = { intent: fillSearchData.intent, weights: fillSearchData.weights };
+      extraParamsRef.current = {
+        intent: fillSearchData.intent,
+        weights: fillSearchData.weights,
+        rewrittenQuery: fillSearchData.rewrittenQuery,
+        expandedQueries: fillSearchData.expandedQueries,
+        sourceBoosts: fillSearchData.sourceBoosts,
+        fallbackDocTypes: fillSearchData.fallbackDocTypes,
+        routeMethod: fillSearchData.routeMethod,
+        intentScores: fillSearchData.intentScores,
+        stocks: fillSearchData.stocks,
+        themes: fillSearchData.themes,
+        tags: fillSearchData.tags,
+        dateFrom: fillSearchData.dateFrom,
+        dateTo: fillSearchData.dateTo,
+      };
+      if (fillSearchData.docTypes) {
+        setDocTypes(fillSearchData.docTypes);
+      }
       lastFilledRef.current = fillSearchData.query;
       onFillSearchConsumed?.();
     }
@@ -319,8 +354,9 @@ function SearchTab({ fillSearchData, onFillSearchConsumed }: { fillSearchData?: 
     setLoading(true); setError(''); setSelectedChunkId(null); setResults([]); setMeta(null);
     try {
       const body: Record<string, unknown> = { query, topK: 8, docTypes: docTypes.length ? docTypes : undefined };
-      if (extraParamsRef.current.intent) body.intent = extraParamsRef.current.intent;
-      if (extraParamsRef.current.weights) body.weights = extraParamsRef.current.weights;
+      for (const [key, value] of Object.entries(extraParamsRef.current)) {
+        if (value !== undefined) body[key] = value;
+      }
       const response = await fetch('/api/rag/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -394,7 +430,12 @@ function SearchTab({ fillSearchData, onFillSearchConsumed }: { fillSearchData?: 
               <textarea
                 rows={4}
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  if (e.target.value !== lastFilledRef.current) {
+                    extraParamsRef.current = {};
+                  }
+                }}
                 onKeyDown={(e) => {
                   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
                     e.preventDefault();
@@ -478,6 +519,8 @@ function SearchTab({ fillSearchData, onFillSearchConsumed }: { fillSearchData?: 
                       { label: '通过 theme',             key: 'afterThemes',     val: filterStats!.afterThemes },
                       { label: '通过 date',              key: 'afterDateRange',  val: filterStats!.afterDateRange },
                       { label: '通过 tag',               key: 'afterTags',       val: filterStats!.afterTags },
+                      { label: '通过 author',            key: 'afterAuthor',    val: filterStats!.afterAuthor },
+                      { label: '通过 stance',           key: 'afterStance',   val: filterStats!.afterStance },
                       { label: '通过所有元数据',          key: 'afterAllFilters', val: filterStats!.afterAllFilters },
                       { label: '通过评分过滤 (>0)',       key: 'afterScoreFilter',val: filterStats!.afterScoreFilter },
                     ].map((stage) => {
@@ -615,6 +658,11 @@ function renderScoreBar(score: number, width = 52) {
   );
 }
 
+function compactList(items?: string[], empty = '无') {
+  if (!items || items.length === 0) return empty;
+  return items.join(', ');
+}
+
 // ---- Traces Tab ----
 
 function TracesTab({ onFillSearch }: { onFillSearch?: (data: FillSearchData) => void }) {
@@ -675,7 +723,26 @@ function TracesTab({ onFillSearch }: { onFillSearch?: (data: FillSearchData) => 
                 </div>
                 {/* Trace fill-back search button — 1 */}
                 <button
-                  onClick={(e) => { e.stopPropagation(); onFillSearch?.({ query: t.query, intent: t.intent, weights: t.weights }); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onFillSearch?.({
+                      query: t.query,
+                      intent: t.intent,
+                      weights: t.weights,
+                      rewrittenQuery: t.rewrittenQuery,
+                      expandedQueries: t.expandedQueries,
+                      sourceBoosts: t.sourceBoosts,
+                      fallbackDocTypes: t.fallbackDocTypes ?? t.retrievalPlan?.fallbackDocTypes,
+                      routeMethod: t.routeMethod,
+                      intentScores: t.intentScores,
+                      docTypes: t.retrievalPlan?.targetDocTypes,
+                      stocks: t.retrievalPlan?.filters?.stocks,
+                      themes: t.retrievalPlan?.filters?.themes,
+                      tags: t.retrievalPlan?.filters?.tags,
+                      dateFrom: t.retrievalPlan?.filters?.dateFrom,
+                      dateTo: t.retrievalPlan?.filters?.dateTo,
+                    });
+                  }}
                   type="button"
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', padding: 4, flexShrink: 0 }}
                   title="回填检索"
@@ -727,10 +794,67 @@ function TracesTab({ onFillSearch }: { onFillSearch?: (data: FillSearchData) => 
               </div>
               {selectedTrace.totalCandidates ? (
                 <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>
-                  {selectedTrace.totalCandidates} 候选 · rerank: {selectedTrace.rerankUsed ? '✅' : '❌'} · MMR: {selectedTrace.mmrUsed ? '✅' : '❌'}
-                </div>
+	                  {selectedTrace.totalCandidates} 候选 · rerank: {selectedTrace.rerankUsed ? '✅' : '❌'} · MMR: {selectedTrace.mmrUsed ? '✅' : '❌'}
+	                  {selectedTrace.phase ? ` · 阶段 ${selectedTrace.phase}` : ''}
+	                </div>
               ) : null}
             </div>
+
+            {selectedTrace.retrievalPlan && (
+              <div style={{ marginTop: 8, padding: 10, background: 'rgba(15,23,34,0.6)', borderRadius: 8, fontSize: 11, lineHeight: 1.7 }}>
+                <div style={{ fontWeight: 600, marginBottom: 6, color: '#7eb8ff' }}>检索配置</div>
+                <div>目标类型: {compactList(selectedTrace.retrievalPlan.targetDocTypes?.map((t: any) => getDocumentTypeLabel(t as any)))}</div>
+                {selectedTrace.retrievalPlan?.filters?.stocks?.length && <div>股票过滤: {compactList(selectedTrace.retrievalPlan.filters.stocks)}</div>}
+                {selectedTrace.retrievalPlan?.filters?.themes?.length && <div>主题过滤: {compactList(selectedTrace.retrievalPlan.filters.themes)}</div>}
+                {selectedTrace.retrievalPlan?.filters?.dateFrom && <div>日期: {selectedTrace.retrievalPlan.filters.dateFrom} ~ {selectedTrace.retrievalPlan.filters.dateTo || ''}</div>}
+                <div>搜索模式: {selectedTrace.retrievalPlan.searchMode || 'hybrid'}</div>
+                <div>回答模式: {selectedTrace.retrievalPlan.answerMode || 'evidence_based_analysis'}</div>
+                <div>topK: {selectedTrace.retrievalPlan.topK ?? '-'} · contextTopK: {selectedTrace.retrievalPlan.contextTopK ?? '-'} · maxChunksPerDoc: {selectedTrace.retrievalPlan.maxChunksPerDoc ?? '-'}</div>
+                {selectedTrace.expandedAddedCount ? <div style={{ color: '#6ed19f' }}>Multi-Query 扩展新增: {selectedTrace.expandedAddedCount} 条</div> : null}
+                {selectedTrace.fallbackAddedCount ? <div style={{ color: '#d4b16a' }}>降级检索新增: {selectedTrace.fallbackAddedCount} 条</div> : null}
+              </div>
+            )}
+
+            {selectedTrace.expandedQueries && selectedTrace.expandedQueries.length > 0 ? (
+              <details style={{ marginBottom: 12, fontSize: 11 }}>
+                <summary style={{ cursor: 'pointer', fontWeight: 600 }}>扩展查询 ({selectedTrace.expandedQueries.length})</summary>
+                <div style={{ marginTop: 6, display: 'grid', gap: 4 }}>
+                  {selectedTrace.expandedQueries.map((q, i) => (
+                    <div key={`${q}-${i}`} style={{ padding: '4px 6px', background: 'rgba(212,177,106,0.06)', borderRadius: 4 }}>
+                      #{i + 1} {q}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            ) : null}
+
+            {selectedTrace.phaseEntries && selectedTrace.phaseEntries.length > 1 ? (() => {
+              const main = selectedTrace.phaseEntries.find((item) => item.phase === 'main') ?? selectedTrace.phaseEntries[0];
+              const final = selectedTrace.phaseEntries.find((item) => item.phase === 'final') ?? selectedTrace;
+              const mainIds = new Set(main.topK.map((item) => item.chunkId));
+              const finalIds = new Set(final.topK.map((item) => item.chunkId));
+              const added = final.topK.filter((item) => !mainIds.has(item.chunkId));
+              const removed = main.topK.filter((item) => !finalIds.has(item.chunkId));
+              return (
+                <div style={{ marginBottom: 12, padding: 10, border: '1px solid var(--border)', borderRadius: 6, fontSize: 11 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 6 }}>阶段对比</div>
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 6 }}>
+                    <span className="meta-pill">main 候选 {main.totalCandidates}</span>
+                    <span className="meta-pill">final 候选 {final.totalCandidates}</span>
+                  </div>
+                  {added.length > 0 ? (
+                    <div style={{ marginTop: 4 }}>
+                      <span style={{ color: '#8cd8b0' }}>final 新增:</span> {added.slice(0, 5).map((item) => item.title).join(' · ')}
+                    </div>
+                  ) : null}
+                  {removed.length > 0 ? (
+                    <div style={{ marginTop: 4 }}>
+                      <span style={{ color: '#e8a87c' }}>main 移除:</span> {removed.slice(0, 5).map((item) => item.title).join(' · ')}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })() : null}
 
             <div className="form-section-title" style={{ fontSize: 12, marginTop: 8 }}>Top K 结果</div>
             <div className="checkbox-list">
@@ -892,12 +1016,28 @@ interface EvalEntry {
   timestamp: string; config: string; validTotal: number;
   hitRate5: number; hitRate10: number; mrr: number;
   byCategory?: Record<string, { count: number; hitRate5: number; hitRate10: number; mrr: number }>;
+  results?: EvalResult[];
 }
 
-function EvalTrendTab() {
+interface EvalResult {
+  id: string;
+  query: string;
+  category: string;
+  intent?: string;
+  hitRate5: boolean;
+  hitRate10: boolean;
+  mrr: number;
+  firstRank: number | null;
+  relevantDocIds?: string[];
+  topKIds: string[];
+  note?: string;
+}
+
+function EvalTrendTab({ onFillSearch }: { onFillSearch?: (data: FillSearchData) => void }) {
   const [entries, setEntries] = useState<EvalEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [evalError, setEvalError] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
 
   useEffect(() => {
     setLoading(true);
@@ -911,8 +1051,16 @@ function EvalTrendTab() {
 
   // Chart dimensions
   const W = 600, H = 200, PAD = 30;
-  const data = entries.filter(e => e.hitRate5 > 0).slice(-15);
+  const data = entries.slice(-15);
   const maxRate = Math.max(...data.map(d => Math.max(d.hitRate5, d.hitRate10, d.mrr)), 1);
+
+  function xAt(index: number) {
+    return data.length <= 1 ? PAD : PAD + (index / (data.length - 1)) * (W - PAD - 10);
+  }
+
+  function metricPoints(field: 'hitRate5' | 'hitRate10' | 'mrr') {
+    return data.map((d, i) => ({ x: xAt(i), y: H - 10 - (d[field] / maxRate) * (H - 20) }));
+  }
 
   function chartLine(points: { x: number; y: number }[], color: string, dash = '') {
     if (points.length < 2) return null;
@@ -921,6 +1069,21 @@ function EvalTrendTab() {
   }
 
   const recent = data.length > 0 ? data[data.length - 1] : null;
+  const categoryOptions = useMemo(() => {
+    const fromResults = new Set(recent?.results?.map((item) => item.category) ?? []);
+    for (const key of Object.keys(recent?.byCategory ?? {})) fromResults.add(key);
+    return ['all', ...Array.from(fromResults).sort()];
+  }, [recent]);
+  const failedCases = useMemo(() => {
+    const details = recent?.results ?? [];
+    return details
+      .filter((item) => (categoryFilter === 'all' || item.category === categoryFilter))
+      .filter((item) => (item.relevantDocIds?.length ?? 0) > 0 && !item.hitRate5)
+      .sort((a, b) => {
+        if (a.hitRate10 !== b.hitRate10) return a.hitRate10 ? 1 : -1;
+        return (b.firstRank ?? 99) - (a.firstRank ?? 99);
+      });
+  }, [categoryFilter, recent]);
 
   return (
     <section className="glass-card form-card" style={{ padding: 16 }}>
@@ -937,10 +1100,10 @@ function EvalTrendTab() {
               <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>最新 HitRate@5</div>
               <div style={{ fontSize: 20, fontWeight: 700 }}>{(recent!.hitRate5 * 100).toFixed(1)}%</div>
             </div>
-            <div style={{ padding: '8px 12px', background: 'rgba(143, 164, 194, 0.06)', borderRadius: 6 }}>
-              <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>最新 MRR</div>
-              <div style={{ fontSize: 20, fontWeight: 700 }}>{(recent!.mrr * 1000 / 10).toFixed(3)}</div>
-            </div>
+	            <div style={{ padding: '8px 12px', background: 'rgba(143, 164, 194, 0.06)', borderRadius: 6 }}>
+	              <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>最新 MRR</div>
+	              <div style={{ fontSize: 20, fontWeight: 700 }}>{recent!.mrr.toFixed(3)}</div>
+	            </div>
             <div style={{ padding: '8px 12px', background: 'rgba(143, 164, 194, 0.06)', borderRadius: 6 }}>
               <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>评测次数</div>
               <div style={{ fontSize: 20, fontWeight: 700 }}>{entries.length}</div>
@@ -957,24 +1120,25 @@ function EvalTrendTab() {
                 <line x1={PAD} y1={H - 10 - v * (H - 20)} x2={W} y2={H - 10 - v * (H - 20)} stroke="var(--border)" strokeDasharray="2,4" />
               </g>
             ))}
-            {/* HitRate5 line */}
-            {data.length > 1 && (() => {
-              const points = data.map((d, i) => ({ x: PAD + (i / (data.length - 1)) * (W - PAD - 10), y: H - 10 - (d.hitRate5 / maxRate) * (H - 20) }));
-              return <path d={points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')} stroke="#8cd8b0" strokeWidth={2} fill="none" />;
-            })()}
-            {/* Dots */}
-            {data.map((d, i) => {
-              const x = PAD + (i / (data.length - 1)) * (W - PAD - 10);
-              const y = H - 10 - (d.hitRate5 / maxRate) * (H - 20);
-              return <circle key={i} cx={x} cy={y} r={3} fill="#8cd8b0" />;
-            })}
+	            {chartLine(metricPoints('hitRate5'), '#8cd8b0')}
+	            {chartLine(metricPoints('hitRate10'), '#d4b16a', '4,4')}
+	            {chartLine(metricPoints('mrr'), '#b0c4d8', '2,3')}
+	            {/* Dots */}
+	            {data.map((d, i) => {
+	              const x = xAt(i);
+	              const y = H - 10 - (d.hitRate5 / maxRate) * (H - 20);
+	              return <circle key={i} cx={x} cy={y} r={3} fill="#8cd8b0" />;
+	            })}
             {/* X labels */}
-            {data.filter((_, i) => i === 0 || i === data.length - 1).map((d, i) => {
-              const idx = i === 0 ? 0 : data.length - 1;
-              const x = PAD + (idx / (data.length - 1)) * (W - PAD - 10);
-              return <text key={i} x={x} y={H - 2} textAnchor="middle" fill="var(--text-secondary)">{d.timestamp.slice(5, 10)}</text>;
-            })}
-          </svg>
+	            {data.filter((_, i) => i === 0 || i === data.length - 1).map((d, i) => {
+	              const idx = i === 0 ? 0 : data.length - 1;
+	              const x = xAt(idx);
+	              return <text key={i} x={x} y={H - 2} textAnchor="middle" fill="var(--text-secondary)">{d.timestamp.slice(5, 10)}</text>;
+	            })}
+	          </svg>
+	          <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>
+	            绿色 Hit@5 · 黄色 Hit@10 · 蓝色 MRR
+	          </div>
 
           {/* Category breakdown */}
           {recent && recent.byCategory && (
@@ -991,11 +1155,69 @@ function EvalTrendTab() {
                     <span className="text-muted" style={{ fontSize: 10 }}>({s.count}条)</span>
                   </div>
                 ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+	              </div>
+	            </div>
+	          )}
+
+	          {recent?.results && recent.results.length > 0 ? (
+	            <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+	              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+	                <div style={{ fontSize: 12, fontWeight: 600 }}>失败样本</div>
+	                <select
+	                  value={categoryFilter}
+	                  onChange={(e) => setCategoryFilter(e.target.value)}
+	                  style={{ fontSize: 12, padding: '4px 6px', background: 'rgba(143,164,194,0.06)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 4 }}
+	                >
+	                  {categoryOptions.map((cat) => (
+	                    <option key={cat} value={cat}>{cat === 'all' ? '全部类别' : cat}</option>
+	                  ))}
+	                </select>
+	                <span className="text-muted" style={{ fontSize: 11 }}>
+	                  {failedCases.length} 条未命中 Hit@5
+	                </span>
+	              </div>
+	              {failedCases.length === 0 ? (
+	                <div className="text-muted" style={{ fontSize: 12 }}>当前过滤条件下没有失败样本。</div>
+	              ) : (
+	                <div style={{ display: 'grid', gap: 8 }}>
+	                  {failedCases.slice(0, 20).map((item) => (
+	                    <div key={item.id} style={{ padding: 8, border: '1px solid var(--border)', borderRadius: 6, background: 'rgba(143,164,194,0.03)' }}>
+	                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+	                        <div>
+	                          <div style={{ fontSize: 12, fontWeight: 600 }}>{item.id} · {item.query}</div>
+	                          <div className="text-muted" style={{ fontSize: 11 }}>
+	                            {item.category}{item.intent ? ` · ${item.intent}` : ''} · firstRank {item.firstRank ?? '-'} · MRR {item.mrr.toFixed(3)}
+	                          </div>
+	                        </div>
+	                        <button
+	                          className="ghost-button"
+	                          type="button"
+	                          style={{ fontSize: 11, flexShrink: 0 }}
+	                          onClick={() => onFillSearch?.({ query: item.query })}
+	                        >
+	                          回填检索
+	                        </button>
+	                      </div>
+	                      {item.note ? <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>{item.note}</div> : null}
+	                      <details style={{ marginTop: 6, fontSize: 11 }}>
+	                        <summary style={{ cursor: 'pointer' }}>expected vs actual</summary>
+	                        <div style={{ marginTop: 4, display: 'grid', gap: 4, fontFamily: 'monospace', wordBreak: 'break-all' }}>
+	                          <div><strong>expected:</strong> {compactList(item.relevantDocIds)}</div>
+	                          <div><strong>actual:</strong> {compactList(item.topKIds?.slice(0, 10))}</div>
+	                        </div>
+	                      </details>
+	                    </div>
+	                  ))}
+	                </div>
+	              )}
+	            </div>
+	          ) : (
+	            <div className="text-muted" style={{ marginTop: 16, fontSize: 12 }}>
+	              历史评测记录没有逐 query 明细，重新运行 <code>npm run eval</code> 后可查看失败样本。
+	            </div>
+	          )}
+	        </div>
+	      )}
     </section>
   );
 }
@@ -1047,7 +1269,7 @@ export function RagDebugWorkbench() {
         <AnswerTraceTab />
       </div>
       <div style={{ display: tab === 'eval' ? '' : 'none' }}>
-        <EvalTrendTab />
+        <EvalTrendTab onFillSearch={handleFillSearch} />
       </div>
     </div>
   );

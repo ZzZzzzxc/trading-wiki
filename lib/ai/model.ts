@@ -135,7 +135,12 @@ export async function callDeepSeekStructuredOutput<T>(
     user: string;
   },
 ): Promise<T> {
-  return providerRegistry.getForTask('structured').structuredOutput(schema, prompts.system, prompts.user);
+  const text = await providerRegistry.getForTask('structured').chat(prompts.system, prompts.user);
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('结构化输出解析失败: 未找到 JSON');
+  const json = JSON.parse(match[0]);
+  const normalized = normalizeAiOutput(json);
+  return schema.parse(normalized);
 }
 
 import { providerRegistry } from './provider-registry';

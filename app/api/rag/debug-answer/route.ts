@@ -9,8 +9,7 @@
  */
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { retrieveRelevantChunks } from '@/lib/rag/retrieve';
-import { routeQuerySource } from '@/lib/rag/source-router';
+import { runRagRetrieval } from '@/lib/rag/pipeline';
 import { getDeepSeekConfig } from '@/lib/ai/model';
 
 const requestSchema = z.object({
@@ -22,21 +21,16 @@ export async function POST(request: Request) {
   try {
     const { query, topK } = requestSchema.parse(await request.json());
 
-    // 1. 完整检索管线
-    const route = await routeQuerySource(query);
-    const searchQuery = route.rewrittenQuery || query;
-    const hits = await retrieveRelevantChunks({
-      query: searchQuery,
+    // 1. 统一检索管线（复用 QA route plan）
+    const rag = await runRagRetrieval(query, {
       topK,
-      sourceBoosts: Object.keys(route.docTypeBoosts).length > 0 ? route.docTypeBoosts : undefined,
-      weights: route.weights,
+      contextTopK: topK,
       mmrLambda: 0.7,
     });
 
     // 2. 组装 context + 生成答案
-    const contextChunks = hits.map((hit, i) => {
+    const contextChunks = rag.contextHits.map((hit, i) => {
       const heading = hit.chunk.headingPath.join(' > ') || '正文';
-      const date = hit.chunk.date ? ` (${hit.chunk.date})` : '';
       return {
         rank: i + 1,
         chunkId: hit.chunk.id,
@@ -121,8 +115,8 @@ export async function POST(request: Request) {
       ok: true,
       data: {
         query,
-        rewrittenQuery: searchQuery,
-        intent: route.intent,
+        rewrittenQuery: rag.searchQuery,
+        intent: rag.route.intent,
         answer: answerText,
         contextChunks,
         citations,

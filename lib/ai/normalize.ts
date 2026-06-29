@@ -194,12 +194,81 @@ function normalizeConfidence(val: unknown): string {
 
 /** 字段名别名映射，兼容 AI 输出的非标准字段名 */
 const FIELD_ALIASES: Record<string, string> = {
+  // a_stock_mapping 中文→英文
+  '中军': 'core', '弹性': 'high_beta', '材料端': 'material',
+  '设备端': 'equipment', '后排补涨': 'laggard', '伪概念': 'fake_concept',
+  // verification_timeline 中文→英文
+  '3_months': 'next_3_months', '6_months': 'next_6_months',
+  '12_months': 'next_12_months', 'falsification_data': 'falsification_data',
+
   evidence_strength: 'grade',
   to_verify: 'needs_check',
   negative_factors: 'penalty_factors',
 };
 
 /** 递归归一化 */
+/** 处理主题研究的嵌套数组字段（a_stock_mapping / verification_timeline），将单值字符串转成数组 */
+function normalizeThemeNestedArray(val: unknown): unknown {
+  if (typeof val !== 'object' || val === null) return val;
+  const result: Record<string, unknown> = {};
+  for (const [key, itemVal] of Object.entries(val as Record<string, unknown>)) {
+    if (itemVal === null) continue; // null → 跳过
+    if (typeof itemVal === 'string') result[key] = [itemVal];
+    else if (Array.isArray(itemVal)) result[key] = itemVal;
+    else result[key] = itemVal;
+  }
+  return result;
+}
+
+/** 处理 references：将字符串或数字 id 转为对象格式 */
+function normalizeReferences(val: unknown): unknown {
+  if (!Array.isArray(val)) return val;
+  return val.map((ref: unknown) => {
+    if (typeof ref === 'object' && ref !== null) {
+      const r = ref as Record<string, unknown>;
+      return { id: String(r.id ?? ''), title: String(r.title ?? '') };
+    }
+    // AI 可能输出字符串格式 "[1] 标题 — 文档ID" 或 "[1] 标题"
+    const str = String(ref ?? '');
+    const match = str.match(/^\[(\d+)\]\s*(.+)$/);
+    if (match) {
+      return { id: match[1], title: match[2].replace(/[—\-]\s*\S+$/, '').trim() };
+    }
+    return { id: '', title: str };
+  });
+}
+
+/** 处理 value_chain_layers：将空字符串转成空数组，确保数组字段类型正确 */
+function normalizeValueChainLayers(val: unknown): unknown {
+  if (!Array.isArray(val)) return val;
+  const ARRAY_FIELDS = new Set(['global_leaders', 'cn_companies', 'a_stock_mapping', 'companies', 'catalysts', 'risks']);
+  return val.map((layer: unknown) => {
+    if (typeof layer !== 'object' || layer === null) return layer;
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(layer as Record<string, unknown>)) {
+      if (v === null) {
+        // null → 跳过（让 Zod 可选项生效）
+        continue;
+      }
+      if (ARRAY_FIELDS.has(k) && typeof v === 'string') {
+        // 字符串值→单元素数组（如 "康宁" → ["康宁"]）
+        result[k] = v ? [v] : [];
+      }
+      else if (k === 'bottlenecks' && typeof v === 'string') {
+        // bottlenecks 期望 SourcedItem[]，但 AI 可能输出纯字符串
+        result[k] = [{ text: v, source: 'inferred' }];
+      } else if (k === 'bottlenecks' && Array.isArray(v)) {
+        // 如果已经是数组，确保每个元素是 { text, source } 格式
+        result[k] = v.map((item: unknown) => {
+          if (typeof item === 'string') return { text: item, source: 'inferred' as const };
+          return item;
+        });
+      } else result[k] = v;
+    }
+    return result;
+  });
+}
+
 export function normalizeAiOutput(obj: unknown): unknown {
   if (typeof obj !== 'object' || obj === null) return obj;
   if (Array.isArray(obj)) return obj.map(normalizeAiOutput);
@@ -211,7 +280,13 @@ export function normalizeAiOutput(obj: unknown): unknown {
     if (normalizedKey === 'stance') result[normalizedKey] = normalizeStance(val);
     else if (normalizedKey === 'time_horizon') result[normalizedKey] = normalizeHorizon(val);
     else if (normalizedKey === 'confidence') result[normalizedKey] = normalizeConfidence(val);
-    else result[normalizedKey] = normalizeField(normalizedKey, normalizeAiOutput(val));
+    else if (normalizedKey === 'a_stock_mapping' || normalizedKey === 'verification_timeline') {
+      // 嵌套对象：将其中的字符串值转成数组
+      result[normalizedKey] = normalizeThemeNestedArray(val);
+    } else if (normalizedKey === 'value_chain_layers') {
+      // 多层价值链：将空字符串转成空数组
+      result[normalizedKey] = normalizeValueChainLayers(val);
+    } else result[normalizedKey] = normalizeField(normalizedKey, normalizeAiOutput(val));
   }
   return result;
 }

@@ -131,33 +131,41 @@ export function ViewpointWorkbench() {
     setMessage('');
 
     try {
-      const response = await fetch('/api/documents', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          type: 'viewpoint',
-          author,
-          platform,
-          date,
-          source: source.trim() || undefined,
-          rawText,
-          extraction: result,
-        }),
-      });
-      const payload = (await response.json()) as SaveResponse;
+      // 按分隔符将多条发言拆成独立观点文档
+      const posts = rawText.split(/\n\s*-{3,}\s*\n/).filter(Boolean);
+      let lastFileSlug = '';
+      let successCount = 0;
 
-      if (!response.ok || !payload.ok || !payload.data) {
-        throw new Error(
-          typeof payload.error === 'string'
-            ? payload.error
-            : '保存观点失败，请稍后重试。',
-        );
+      for (const post of posts) {
+        const resp = await fetch('/api/documents', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            type: 'viewpoint',
+            author,
+            platform,
+            date,
+            source: source.trim() || undefined,
+            rawText: post.trim(),
+            extraction: result,
+          }),
+        });
+        const p = (await resp.json()) as SaveResponse;
+        if (!resp.ok || !p.ok || !p.data) {
+          throw new Error(
+            typeof p.error === 'string'
+              ? p.error
+              : '保存观点失败，请稍后重试。',
+          );
+        }
+        lastFileSlug = p.data.id;
+        successCount++;
       }
 
-      showToast('观点已保存', 'success');
-      router.push(`/viewpoints/${payload.data.id}`);
+      showToast(posts.length > 1 ? `已保存 ${successCount} 条观点` : '观点已保存', 'success');
+      router.push(`/viewpoints/${lastFileSlug}`);
       router.refresh();
     } catch (saveError) {
       const msg = saveError instanceof Error

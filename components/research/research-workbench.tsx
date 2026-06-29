@@ -3,13 +3,24 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Send, Brain, Search, BookOpen, CheckCheck, AlertCircle, FlaskConical } from 'lucide-react';
 import { AppShell } from '@/components/layout';
-import type { ResearchPlan } from '@/lib/ai/research-agent';
+import type { ResearchEvidenceItem, ResearchPlan, ResearchQualityAssessment, ResearchReportValidation, ResearchTaskCoverage } from '@/lib/ai/research-agent';
 
 interface ResearchMessage {
   id: string;
-  type: 'user' | 'agent_plan' | 'agent_tool_call' | 'agent_tool_result' | 'agent_debate_result' | 'report_chunk' | 'report_done' | 'error';
+  type: 'user' | 'agent_plan' | 'agent_tool_call' | 'agent_tool_result' | 'agent_evidence' | 'agent_coverage' | 'agent_research_summary' | 'agent_report_fallback' | 'agent_report_validation' | 'agent_quality' | 'agent_debate_result' | 'report_chunk' | 'report_done' | 'error';
   data: unknown;
   timestamp: number;
+}
+
+interface ResearchSummary {
+  evidenceCount: number;
+  minEvidence: number;
+  coverageDone: number;
+  coverageTotal: number;
+  coverageRate: number;
+  ragTraceIds: string[];
+  insufficientQuestions: string[];
+  citationCoverage: 'enough' | 'below_minimum';
 }
 
 export function ResearchWorkbench() {
@@ -22,6 +33,11 @@ export function ResearchWorkbench() {
   const [currentReport, setCurrentReport] = useState('');
   const [plan, setPlan] = useState<ResearchPlan | null>(null);
   const [debateResult, setDebateResult] = useState<any>(null);
+  const [coverage, setCoverage] = useState<ResearchTaskCoverage[]>([]);
+  const [evidence, setEvidence] = useState<ResearchEvidenceItem[]>([]);
+  const [researchSummary, setResearchSummary] = useState<ResearchSummary | null>(null);
+  const [reportValidation, setReportValidation] = useState<ResearchReportValidation | null>(null);
+  const [quality, setQuality] = useState<ResearchQualityAssessment | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -33,6 +49,12 @@ export function ResearchWorkbench() {
     setMessages([]);
     setCurrentReport('');
     setPlan(null);
+    setCoverage([]);
+    setEvidence([]);
+    setResearchSummary(null);
+    setReportValidation(null);
+    setQuality(null);
+    setDebateResult(null);
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -72,12 +94,31 @@ export function ResearchWorkbench() {
               setMessages(prev => [...prev, msg]);
             } else if (event.type === 'agent_tool_call' || event.type === 'agent_tool_result') {
               setMessages(prev => [...prev, msg]);
+            } else if (event.type === 'agent_coverage') {
+              const data = event.data as { coverageAll?: ResearchTaskCoverage[] };
+              if (data.coverageAll) setCoverage(data.coverageAll);
+            } else if (event.type === 'agent_evidence') {
+              const data = event.data as { evidence?: ResearchEvidenceItem };
+              if (data.evidence) {
+                setEvidence(prev => {
+                  if (prev.some(item => item.id === data.evidence!.id)) return prev;
+                  return [...prev, data.evidence!];
+                });
+              }
+            } else if (event.type === 'agent_research_summary') {
+              setResearchSummary(event.data as ResearchSummary);
+            } else if (event.type === 'agent_report_validation') {
+              setReportValidation(event.data as ResearchReportValidation);
+            } else if (event.type === 'agent_quality') {
+              setQuality(event.data as ResearchQualityAssessment);
             } else if (event.type === 'report_chunk') {
               setCurrentReport((event.data as { content: string }).content);
             } else if (event.type === 'agent_debate_result') {
               setDebateResult(event.data);
               setMessages(prev => [...prev, msg]);
             } else if (event.type === 'report_done') {
+              const data = event.data as { report?: string };
+              if (data.report) setCurrentReport(data.report);
               setMessages(prev => [...prev, msg]);
               setStreaming(false);
             } else if (event.type === 'error') {
@@ -166,9 +207,75 @@ export function ResearchWorkbench() {
                 <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, color: 'var(--muted)' }}>
                   <span style={{ color: 'var(--accent)', fontWeight: 600, flexShrink: 0 }}>{i + 1}.</span>
                   <span>{q}</span>
+                  {coverage[i] && (
+                    <span style={{
+                      marginLeft: 'auto',
+                      flexShrink: 0,
+                      fontSize: 11,
+                      color: coverage[i].status === 'insufficient' ? '#e09090' : coverage[i].status === 'pending' ? 'var(--muted)' : '#6ed19f',
+                    }}>
+                      {coverageStatusLabel(coverage[i].status)}
+                      {coverage[i].evidenceIds.length ? ` · ${coverage[i].evidenceIds.length}` : ''}
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {(researchSummary || evidence.length > 0) && (
+          <div className="glass-card" style={{ padding: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <CheckCheck size={15} style={{ color: '#6ed19f' }} />
+              <strong style={{ fontSize: 13 }}>证据账本</strong>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12, color: 'var(--muted)' }}>
+              {quality && <span style={{ color: quality.score >= 70 ? '#6ed19f' : quality.score >= 55 ? '#d4b16a' : '#e09090' }}>质量: {quality.grade} · {quality.score}</span>}
+              <span>Evidence: {researchSummary?.evidenceCount ?? evidence.length}{researchSummary ? ` / ${researchSummary.minEvidence}` : ''}</span>
+              {researchSummary && <span>Coverage: {researchSummary.coverageDone}/{researchSummary.coverageTotal}</span>}
+              {researchSummary && <span>引用覆盖: {researchSummary.citationCoverage === 'enough' ? '达标' : '不足'}</span>}
+              {reportValidation && <span>报告引用: {reportValidation.citedEvidenceIds.length}/{reportValidation.citedEvidenceIds.length + reportValidation.uncitedEvidenceIds.length}</span>}
+              {reportValidation && <span>结构: {reportValidation.missingSections.length ? `缺 ${reportValidation.missingSections.length}` : '完整'}</span>}
+              {reportValidation?.fallbackUsed && <span>Evidence草稿</span>}
+              {reportValidation?.repaired && <span>已自动补齐结构</span>}
+              {researchSummary?.ragTraceIds?.length ? <span>RAG traces: {researchSummary.ragTraceIds.length}</span> : null}
+            </div>
+            {researchSummary?.insufficientQuestions?.length ? (
+              <div style={{ marginTop: 8, fontSize: 12, color: '#e09090' }}>
+                证据不足: {researchSummary.insufficientQuestions.slice(0, 2).join('；')}
+                {researchSummary.insufficientQuestions.length > 2 ? ` 等 ${researchSummary.insufficientQuestions.length} 项` : ''}
+              </div>
+            ) : null}
+            {quality?.reasons?.length ? (
+              <div style={{ marginTop: 8, fontSize: 12, color: '#d4b16a' }}>
+                质量原因: {quality.reasons.slice(0, 2).join('；')}
+                {quality.reasons.length > 2 ? ` 等 ${quality.reasons.length} 项` : ''}
+              </div>
+            ) : null}
+            {quality?.blockers?.length ? (
+              <div style={{ marginTop: 8, fontSize: 12, color: '#e09090' }}>
+                阻断项: {quality.blockers.slice(0, 2).join('；')}
+                {quality.blockers.length > 2 ? ` 等 ${quality.blockers.length} 项` : ''}
+              </div>
+            ) : null}
+            {reportValidation?.warnings?.length ? (
+              <div style={{ marginTop: 8, fontSize: 12, color: '#d4b16a' }}>
+                报告校验: {reportValidation.warnings.slice(0, 2).join('；')}
+                {reportValidation.warnings.length > 2 ? ` 等 ${reportValidation.warnings.length} 项` : ''}
+              </div>
+            ) : null}
+            {reportValidation?.repairNotes?.length ? (
+              <div style={{ marginTop: 8, fontSize: 12, color: 'var(--muted)' }}>
+                自动修复: {reportValidation.repairNotes.slice(0, 2).join('；')}
+                {reportValidation.repairNotes.length > 2 ? ` 等 ${reportValidation.repairNotes.length} 项` : ''}
+              </div>
+            ) : null}
+            {reportValidation?.fallbackUsed ? (
+              <div style={{ marginTop: 8, fontSize: 12, color: 'var(--muted)' }}>
+                回退生成: {reportValidation.fallbackReason || '模型正文不足，已使用Evidence生成草稿'}
+              </div>
+            ) : null}
           </div>
         )}
 
@@ -300,6 +407,21 @@ export function ResearchWorkbench() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
               <BookOpen size={14} style={{ color: 'var(--accent)' }} />
               <strong style={{ fontSize: 13 }}>研究报告</strong>
+              {researchSummary && (
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                  {researchSummary.evidenceCount} 条证据 · 覆盖 {researchSummary.coverageDone}/{researchSummary.coverageTotal}
+                </span>
+              )}
+              {reportValidation && (
+                <span style={{ fontSize: 11, color: reportValidation.passed ? '#6ed19f' : '#d4b16a' }}>
+                  校验{reportValidation.passed ? '通过' : '有警告'}
+                </span>
+              )}
+              {quality && (
+                <span style={{ fontSize: 11, color: quality.score >= 70 ? '#6ed19f' : quality.score >= 55 ? '#d4b16a' : '#e09090' }}>
+                  质量 {quality.grade}
+                </span>
+              )}
               {streaming && <span className="thinking-cursor" />}
             </div>
             <div className="markdown-body" style={{ fontSize: 14, lineHeight: 1.8 }}
@@ -340,6 +462,14 @@ export function ResearchWorkbench() {
       </div>
     </div>
   );
+}
+
+function coverageStatusLabel(status: ResearchTaskCoverage['status']): string {
+  if (status === 'pending') return '待检索';
+  if (status === 'searching') return '检索中';
+  if (status === 'evidence_found') return '已获证据';
+  if (status === 'summarized') return '已总结';
+  return '证据不足';
 }
 
 function renderResearchMarkdown(text: string): string {

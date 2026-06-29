@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { embedText, cosineSimilarity, tokenizeForEmbedding } from '@/lib/rag/embed';
 import { rerankHits } from '@/lib/rag/rerank';
 import { computeBm25Score, tokenize as bm25Tokenize } from '@/lib/rag/bm25';
-import { writeTrace } from '@/lib/rag/trace';
+import { readTraceById, writeTrace } from '@/lib/rag/trace';
 import { RAG_FILES } from '@/lib/storage/paths';
 import type { RagChunk, RagEmbedding, RagSearchHit, RetrieveOptions } from '@/lib/rag/types';
 
@@ -83,6 +83,12 @@ function computeMetadataScore(
   if (options.tags?.length) {
     metadataScores.push(options.tags.some((tag) => chunk.tags?.some((ct) => ct.includes(tag))) ? 1 : 0);
   }
+  if (options.author) {
+    metadataScores.push((chunk.author || '').toLowerCase().includes(options.author.toLowerCase()) ? 1 : 0);
+  }
+  if (options.stance) {
+    metadataScores.push(chunk.stance === options.stance ? 1 : 0);
+  }
 
   if (!metadataScores.length) {
     if (!queryTokens.length) return 0;
@@ -155,6 +161,23 @@ function applyMMR(
   return selected;
 }
 
+function toTraceCandidates(hits: RagSearchHit[], options: RetrieveOptions) {
+  return hits.map((h) => ({
+    chunkId: h.chunk.id,
+    docId: h.chunk.docId,
+    title: h.chunk.title,
+    docType: h.chunk.docType,
+    headingPath: h.chunk.headingPath,
+    finalScore: h.finalScore,
+    vectorScore: h.vectorScore,
+    keywordScore: h.keywordScore,
+    metadataScore: h.metadataScore,
+    freshnessScore: h.freshnessScore,
+    sourceBoost: options.sourceBoosts?.[h.chunk.docType] ?? 1.0,
+    selected: true,
+  }));
+}
+
 export async function rankRagChunks(
   chunks: RagChunk[],
   embeddings: RagEmbedding[],
@@ -173,22 +196,54 @@ export async function rankRagChunks(
   const w = options.weights ?? { vector: 0.6, keyword: 0.15, metadata: 0.1, freshness: 0.15 };
   const totalWeight = w.vector + w.keyword + w.metadata + w.freshness;
 
-  // Filter stats tracking
-  let afterDocTypes = 0, afterStocks = 0, afterThemes = 0, afterTags = 0, afterDateRange = 0;
+  // Sequential filtering: each step filters the remaining pool from the previous step.
+  // filterStats values represent the count *after* each filter stage, not independent hits.
+  let remaining = chunks;
 
-  const filtered = chunks.filter((chunk) => {
-    const passDocTypes = !options.docTypes?.length || options.docTypes.includes(chunk.docType);
-    const passStocks = !options.stocks?.length || options.stocks.some((stock) => chunk.stocks?.some((cs) => cs.includes(stock) || stock.includes(cs)));
-    const passThemes = !options.themes?.length || options.themes.some((theme) => chunk.themes?.some((ct) => ct.includes(theme) || theme.includes(ct)));
-    const passTags = !options.tags?.length || options.tags.some((tag) => chunk.tags?.some((ct) => ct.includes(tag)));
-    const passDate = !options.dateFrom && !options.dateTo || normalizeDateScore(chunk, options);
-    if (passDocTypes) afterDocTypes++;
-    if (passStocks) afterStocks++;
-    if (passThemes) afterThemes++;
-    if (passTags) afterTags++;
-    if (passDate) afterDateRange++;
-    return passDocTypes && passStocks && passThemes && passTags && passDate;
-  });
+  let afterDocTypes = remaining.length;
+  if (options.docTypes?.length) {
+    remaining = remaining.filter((c) => options.docTypes!.includes(c.docType));
+    afterDocTypes = remaining.length;
+  }
+
+  let afterStocks = remaining.length;
+  if (options.stocks?.length) {
+    remaining = remaining.filter((c) => options.stocks!.some((stock) => c.stocks?.some((cs) => cs.includes(stock) || stock.includes(cs))));
+    afterStocks = remaining.length;
+  }
+
+  let afterThemes = remaining.length;
+  if (options.themes?.length) {
+    remaining = remaining.filter((c) => options.themes!.some((theme) => c.themes?.some((ct) => ct.includes(theme) || theme.includes(ct))));
+    afterThemes = remaining.length;
+  }
+
+  let afterTags = remaining.length;
+  if (options.tags?.length) {
+    remaining = remaining.filter((c) => options.tags!.some((tag) => c.tags?.some((ct) => ct.includes(tag))));
+    afterTags = remaining.length;
+  }
+
+  let afterDateRange = remaining.length;
+  if (options.dateFrom || options.dateTo) {
+    remaining = remaining.filter((c) => normalizeDateScore(c, options));
+    afterDateRange = remaining.length;
+  }
+
+  let afterAuthor = remaining.length;
+  if (options.author) {
+    const authorKw = options.author.toLowerCase();
+    remaining = remaining.filter((c) => (c.author || '').toLowerCase().includes(authorKw));
+    afterAuthor = remaining.length;
+  }
+
+  let afterStance = remaining.length;
+  if (options.stance) {
+    remaining = remaining.filter((c) => c.stance === options.stance);
+    afterStance = remaining.length;
+  }
+
+  const filtered = remaining;
   const tFilter = performance.now();
 
   const scored = filtered
@@ -209,19 +264,13 @@ export async function rankRagChunks(
     })
     .filter((item) => item.finalScore > 0)
     .sort((left, right) => right.finalScore - left.finalScore);
-  if (scored.length === 0) {
-    const sample = filtered.slice(0, 3).map(c => {
-      const cv = embeddingMap.get(c.id) ?? [];
-      const vs = cosineSimilarity(queryVector, cv);
-      return { id: c.id.slice(0,30), vs, cvLen: cv.length };
-    });
-  }
   const tScore = performance.now();
 
   // Rerank + diversify pipeline
   const topK = options.topK ?? 8;
   let result: RagSearchHit[];
-  const rerankUsed = scored.length > topK;
+  const enableRerank = options.enableRerank !== false;
+  let rerankUsed = false;
   // MMR λ 动态配置：按意图调整多样性
   const MMR_LAMBDA_BY_INTENT: Record<string, number> = {
     chain:       0.5,  // 产业链：侧重多样性，展示不同环节
@@ -231,33 +280,49 @@ export async function rankRagChunks(
     market_review: 0.7, // 复盘：默认
     general:     0.7,  // 通用：默认
   };
+  const enableMmr = options.enableMmr !== false;
   const mmrLambda = options.mmrLambda ?? MMR_LAMBDA_BY_INTENT[options.intent ?? ''] ?? 0.7;
-  const mmrUsed = mmrLambda < 1;
+  let mmrUsed = false;
   const rerankChanges: Array<{ chunkId: string; title: string; beforeRank: number; afterRank: number; score: number }> = [];
-  let tRerankStart = 0, tRerankEnd = 0, tEnd = 0;
+  let tRerankStart = 0, tRerankEnd = 0, tMmrStart = 0, tMmrEnd = 0, tEnd = 0;
 
   if (scored.length > topK) {
-    const candidates = scored.slice(0, 30);
+    const candidateLimit = options.rerankCandidateLimit ?? 30;
+    const candidates = scored.slice(0, candidateLimit);
     const beforeRerank = candidates.map((c, i) => ({ id: c.chunk.id, title: c.chunk.title, rank: i + 1 }));
-    tRerankStart = performance.now();
 
-    const reranked = await rerankHits(query, candidates);
-    tRerankEnd = performance.now();
+    let reranked = candidates;
+    if (enableRerank && candidates.length > 1) {
+      const rerankTopK = Math.min(
+        options.rerankTopK ?? candidates.length,
+        candidates.length,
+      );
+      tRerankStart = performance.now();
+      reranked = await rerankHits(query, candidates, {
+        topK: rerankTopK,
+        candidateLimit,
+      });
+      tRerankEnd = performance.now();
+      rerankUsed = true;
 
-    for (let i = 0; i < Math.min(reranked.length, 10); i++) {
-      const before = beforeRerank.find((b) => b.id === reranked[i].chunk.id);
-      if (before && before.rank !== i + 1) {
-        rerankChanges.push({ chunkId: reranked[i].chunk.id, title: reranked[i].chunk.title, beforeRank: before.rank, afterRank: i + 1, score: reranked[i].finalScore });
+      for (let i = 0; i < Math.min(reranked.length, 10); i++) {
+        const before = beforeRerank.find((b) => b.id === reranked[i].chunk.id);
+        if (before && before.rank !== i + 1) {
+          rerankChanges.push({ chunkId: reranked[i].chunk.id, title: reranked[i].chunk.title, beforeRank: before.rank, afterRank: i + 1, score: reranked[i].finalScore });
+        }
       }
     }
 
     // 2. MMR diversity (if enabled)
-    if (mmrUsed && reranked.length > topK) {
+    if (enableMmr && mmrLambda < 1 && reranked.length > topK) {
+      tMmrStart = performance.now();
       result = applyMMR(reranked, embeddingMap, mmrLambda!, topK);
+      tMmrEnd = performance.now();
+      mmrUsed = true;
     } else {
       result = reranked.slice(0, topK);
     }
-    const tEnd = performance.now();
+    tEnd = performance.now();
   } else {
     result = scored;
     tEnd = performance.now();
@@ -275,13 +340,29 @@ export async function rankRagChunks(
       intentScores: options.intentScores,
       weights: w,
       sourceBoosts: options.sourceBoosts as Record<string, number> | undefined,
+      expandedQueries: options.expandedQueries,
+      fallbackDocTypes: options.fallbackDocTypes,
+      retrievalPlan: {
+        targetDocTypes: options.traceTargetDocTypes ?? options.docTypes,
+        filters: {
+          stocks: options.stocks,
+          themes: options.themes,
+          tags: options.tags,
+          dateFrom: options.dateFrom,
+          dateTo: options.dateTo,
+        },
+        topK,
+        contextTopK: options.traceContextTopK,
+        maxChunksPerDoc: options.traceMaxChunksPerDoc,
+        fallbackDocTypes: options.fallbackDocTypes,
+      },
       totalCandidates: scored.length,
       latencyMs: {
         filter: Math.round(tFilter - tEmbed),
         vectorScore: Math.round(tScore - tFilter),
         keywordScore: 0,
         rerank: tRerankEnd > 0 ? Math.round(tRerankEnd - tRerankStart) : undefined,
-        mmr: tRerankEnd > 0 ? Math.round(tEnd - tRerankEnd) : undefined,
+        mmr: tMmrEnd > 0 ? Math.round(tMmrEnd - tMmrStart) : undefined,
         total: Math.round(tEnd - tStart),
       },
       filterStats: {
@@ -295,22 +376,11 @@ export async function rankRagChunks(
         afterScoreFilter: scored.length,
       },
       rerankChanges: rerankChanges.length > 0 ? rerankChanges : undefined,
-      topK: result.map((h) => ({
-        chunkId: h.chunk.id,
-        docId: h.chunk.docId,
-        title: h.chunk.title,
-        docType: h.chunk.docType,
-        headingPath: h.chunk.headingPath,
-        finalScore: h.finalScore,
-        vectorScore: h.vectorScore,
-        keywordScore: h.keywordScore,
-        metadataScore: h.metadataScore,
-        freshnessScore: h.freshnessScore,
-        sourceBoost: options.sourceBoosts?.[h.chunk.docType] ?? 1.0,
-        selected: true,
-      })),
+      topK: toTraceCandidates(result, options),
       rerankUsed,
       mmrUsed,
+      mmrLambda,
+      phase: 'main',
     });
   }
 
@@ -334,6 +404,8 @@ export async function retrieveRelevantChunks(
 
   // 构建结果池：主查询 + Multi-Query 扩展合并
   let resultPool: RagSearchHit[];
+  let expandedAddedCount = 0;
+  let fallbackAddedCount = 0;
 
   const expanded = options.expandedQueries ?? [];
   if (expanded.length > 0) {
@@ -352,6 +424,7 @@ export async function retrieveRelevantChunks(
       for (const hit of hits) {
         const existing = merged.get(hit.chunk.id);
         if (!existing || hit.finalScore > existing.finalScore) {
+          if (!existing) expandedAddedCount++;
           merged.set(hit.chunk.id, hit);
         }
       }
@@ -380,10 +453,27 @@ export async function retrieveRelevantChunks(
       if (!currentIds.has(hit.chunk.id)) {
         resultPool.push(hit);
         currentIds.add(hit.chunk.id);
+        fallbackAddedCount++;
         if (resultPool.length >= topK) break;
       }
     }
   }
 
-  return resultPool.slice(0, topK);
+  const finalHits = resultPool.slice(0, topK);
+
+  if (options.traceId) {
+    const baseTrace = await readTraceById(options.traceId);
+    if (baseTrace) {
+      await writeTrace({
+        ...baseTrace,
+        phase: 'final',
+        totalCandidates: resultPool.length,
+        topK: toTraceCandidates(finalHits, options),
+        expandedAddedCount,
+        fallbackAddedCount,
+      });
+    }
+  }
+
+  return finalHits;
 }

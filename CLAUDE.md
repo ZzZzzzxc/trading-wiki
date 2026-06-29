@@ -79,7 +79,7 @@ Agent 编排层（lib/ai/ + lib/agents/）  → ResearchAgent (三阶段) + Simp
 - **`multi-query.ts`** — 多角度查询生成（基本面/技术面/产业链）
 - **`fallback-chain.ts`** — 数据源降级链（primary → fallback → lastResort）
 
-**Rerank**（`rerank.ts`）：优先本地 cross-encoder（onnx-community/bge-reranker-v2-m3），回退 DeepSeek API。LRU 缓存（200 条，60s TTL），候选集 15 个。
+**Rerank**（`rerank.ts`）：优先本地 cross-encoder（onnx-community/bge-reranker-v2-m3），回退 DeepSeek API。LRU 缓存（200 条，60s TTL），候选集 30 个（可配）。
 
 **分块**（`chunk-md.ts`）：
 - 按 `##` 标题切分，headingPath 保留结构
@@ -95,7 +95,7 @@ Agent 编排层（lib/ai/ + lib/agents/）  → ResearchAgent (三阶段) + Simp
 
 **意图识别**（`source-router.ts`）：
 - 双层架构：LLM 优先（3s 超时）→ 正则评分回退
-- 6 种意图：`recency / verification / chain / stock_deep / market_review / general`
+- 9 种意图：`recency / verification / chain / stock_deep / market_review / value_analysis / policy_impact / risk_alert / general`
 - 正则评分制：每个意图独立算分（关键词长度加权 + 密集度加成）
 - 高置信度（2x 领先）跳过 LLM，零延迟
 - 输出 `RetrievalPlan`：`{ targetDocTypes, filters, topK, answerMode }`

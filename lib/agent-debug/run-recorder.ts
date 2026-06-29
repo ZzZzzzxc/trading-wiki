@@ -1,4 +1,5 @@
 import { mkdir, appendFile, readdir, rm, readFile, writeFile } from 'node:fs/promises';
+import { appendFileSync, mkdirSync } from 'node:fs';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { DATA_DIR } from '@/lib/storage/paths';
@@ -60,6 +61,7 @@ export class RunRecorder {
   private events: AgentDebugEvent[] = [];
   private traceDir: string;
   private run: AgentRun;
+  private eventPersistFailed = false;
 
   constructor(userQuery: string, config: { depth: string; focus: string; debate: boolean }) {
     this.runId = `agent_${Date.now().toString(36)}_${crypto.randomUUID().slice(0, 8)}`;
@@ -81,7 +83,7 @@ export class RunRecorder {
     const startedAt = Date.now();
     const step: AgentStep = { stepId: sid, runId: this.runId, type, name, status: 'running', startedAt: now() };
     this.run.steps.push(step);
-    this.appendEvent({ type: 'step_started', runId: this.runId, stepId, name, stepType: type });
+    this.appendEvent({ type: 'step_started', runId: this.runId, stepId: sid, name, stepType: type });
 
     try {
       const output = await fn();
@@ -151,6 +153,11 @@ export class RunRecorder {
     this.appendEvent({ type: 'rag_retrieve', runId: this.runId, stepId, query, resultsCount, topK });
   }
 
+  /** 记录研究过程中的结构化状态（coverage/evidence/summary 等） */
+  recordResearchEvent(stepId: string, type: string, data: unknown): void {
+    this.appendEvent({ type, runId: this.runId, stepId, data });
+  }
+
   async finish(finalAnswer?: string, error?: AgentError): Promise<void> {
     this.run.status = error ? 'failed' : 'success';
     this.run.endedAt = now();
@@ -173,12 +180,13 @@ export class RunRecorder {
           finalAnswer: this.run.finalAnswer?.slice(0, 100), error: this.run.error }) + '\n',
         'utf8',
       );
-      // 写事件详情
-      await appendFile(
-        path.join(this.traceDir, 'events', `${this.runId}.jsonl`),
-        this.events.map(e => JSON.stringify(e)).join('\n') + '\n',
-        'utf8',
-      );
+      if (this.eventPersistFailed) {
+        await writeFile(
+          path.join(this.traceDir, 'events', `${this.runId}.jsonl`),
+          this.events.map(e => JSON.stringify(e)).join('\n') + '\n',
+          'utf8',
+        );
+      }
     } catch (err) {
       console.error('[agent-debug] 写入 trace 失败:', err);
     }
@@ -188,6 +196,20 @@ export class RunRecorder {
   }
 
   private appendEvent(event: AgentDebugEvent): void {
-    this.events.push({ ...event, timestamp: now() });
+    const stamped = { ...event, timestamp: now() };
+    this.events.push(stamped);
+    this.persistEvent(stamped);
+  }
+
+  private persistEvent(event: AgentDebugEvent): void {
+    if (this.eventPersistFailed) return;
+    try {
+      const eventsDir = path.join(this.traceDir, 'events');
+      mkdirSync(eventsDir, { recursive: true });
+      appendFileSync(path.join(eventsDir, `${this.runId}.jsonl`), JSON.stringify(event) + '\n', 'utf8');
+    } catch (err) {
+      this.eventPersistFailed = true;
+      console.error('[agent-debug] 增量写入 trace 失败:', err);
+    }
   }
 }

@@ -1,9 +1,13 @@
 import { z } from 'zod';
+import type { ResearchDepth, ResearchFocus } from '@/lib/ai/research-protocol';
 
 /** 工具执行上下文 */
 export interface SkillContext {
   question: string;
   intent?: string;
+  depth?: ResearchDepth;
+  focus?: ResearchFocus;
+  runId?: string;
   entities?: { stocks?: Array<{ name: string; code?: string }>; themes?: string[] };
   [key: string]: unknown;
 }

@@ -1,6 +1,6 @@
 import type { GraphNode } from '../graph';
 import { providerRegistry } from '@/lib/ai/provider-registry';
-import type { ResearchConfig } from '@/lib/ai/research-agent';
+import type { ResearchConfig } from '@/lib/ai/research-protocol';
 
 export interface PlanOutput {
   title: string;
@@ -17,7 +17,18 @@ export const planNode: GraphNode = {
     if (!question) throw new Error('plan: question 不能为空');
 
     const provider = providerRegistry.getForTask('structured');
-    const prompt = `你是一个A股投研专家。请分析用户的研究问题，将其拆解为2-5个具体可搜索的子问题。
+    const depthGuide = config.depth === 'quick' ? '拆解为2-3个子问题' : config.depth === 'deep' ? '拆解为5-7个子问题' : '拆解为4-5个子问题';
+    const focusGuide = {
+      comprehensive: '全面覆盖技术、产业、公司、催化、风险。',
+      technical: '重点覆盖技术路线、设备、材料、工艺、国产替代和客户验证。',
+      fundamental: '重点覆盖公司、产能、客户、订单、毛利率、价值量和估值。',
+      news: '重点覆盖近期催化、政策、价格、招标、公告和供需变化。',
+    }[config.focus];
+
+    const prompt = `你是一个A股投研专家。请分析用户的研究问题，${depthGuide}，每个子问题都必须具体可搜索。
+
+研究聚焦: ${config.focus}
+聚焦要求: ${focusGuide}
 
 示例：
 问题：光纤光缆行业投资价值分析

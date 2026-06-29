@@ -37,6 +37,14 @@ export interface RetrieveOptions {
   weights?: { vector: number; keyword: number; metadata: number; freshness: number };
   /** MMR 多样性系数：0=纯多样性，1=纯相关，默认不启用（undefined） */
   mmrLambda?: number;
+  /** 是否启用 rerank，默认启用 */
+  enableRerank?: boolean;
+  /** 是否启用 MMR，默认启用 */
+  enableMmr?: boolean;
+  /** 送入 rerank 的候选数，默认 30 */
+  rerankCandidateLimit?: number;
+  /** rerank 后保留的候选数，默认至少保留 topK */
+  rerankTopK?: number;
   /** 检索 trace ID（用于链路追踪，空则不写 trace） */
   traceId?: string;
   /** Multi-Query 扩展查询：多条具体查询分别检索后合并，用于模糊查询场景 */
@@ -53,6 +61,18 @@ export interface RetrieveOptions {
   intentScores?: Array<{ intent: string; score: number; matched: string[] }>;
   /** 降级检索的文档类型 */
   fallbackDocTypes?: DocumentType[];
+  /** 按作者过滤 */
+  author?: string;
+  /** 按平台过滤 */
+  platform?: string;
+  /** 按立场过滤 (bullish/bearish/neutral/watch) */
+  stance?: string;
+  /** trace 补充信息：进入检索层的目标文档类型 */
+  traceTargetDocTypes?: DocumentType[];
+  /** trace 补充信息：进入 prompt 的 chunk 数 */
+  traceContextTopK?: number;
+  /** trace 补充信息：同一文档进入 prompt 的 chunk 上限 */
+  traceMaxChunksPerDoc?: number;
 }
 
 export interface RagSearchHit {
@@ -98,12 +118,19 @@ export interface RetrievalPlan {
   answerMode: AnswerMode;
   /** 降级文档类型（当 primary 结果不足时使用） */
   fallbackDocTypes?: DocumentType[];
+  /** 按作者过滤 */
+  author?: string;
+  /** 按平台过滤 */
+  platform?: string;
+  /** 按立场过滤 (bullish/bearish/neutral/watch) */
+  stance?: string;
 }
 
 /** 实体提取结果 */
 export interface ParsedEntities {
   stocks: Array<{ name: string; codes: string[]; themes: string[] }>;
   themes: string[];
+  author?: string;
   timeRange?: {
     type: 'today' | 'yesterday' | 'recent' | 'historical' | 'unknown';
     dateFrom?: string;

@@ -4,15 +4,12 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { z } from 'zod';
 import { getDeepSeekConfig } from '@/lib/ai/model';
-import { retrieveRelevantChunks } from '@/lib/rag/retrieve';
-import { routeQuerySource } from '@/lib/rag/source-router';
-import { getDocumentTypeLabel } from '@/lib/utils/display';
+import { runRagRetrieval } from '@/lib/rag/pipeline';
 import { DATA_DIR } from '@/lib/storage/paths';
 import { slugify } from '@/lib/storage/slug';
 import { buildLocalDocumentIndex } from '@/lib/storage/build-index';
 import { upsertRagDocument } from '@/lib/rag/rebuild';
 import { readMarkdownDocument } from '@/lib/storage/md-store';
-import type { TraceCandidate } from '@/lib/rag/trace';
 
 const QA_DIR = path.join(DATA_DIR, 'qa');
 
@@ -68,65 +65,17 @@ function parseThreadRounds(content: string): number {
 
 export async function POST(request: Request) {
   try {
-    const { messages, topK, threadId } = requestSchema.parse(await request.json());
+    const { messages, threadId } = requestSchema.parse(await request.json());
 
     const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user');
     const question = lastUserMsg?.content || '';
 
     // RAG 检索 + 源路由
-    const route = await routeQuerySource(question);
-    const searchQuery = route.rewrittenQuery || question;
     const traceId = `rag_${Date.now().toString(36)}_${crypto.randomUUID().slice(0, 8)}`;
-    const rp = route.retrievalPlan;
-    const hits = await retrieveRelevantChunks({
-      query: searchQuery,
-      topK: rp.topK,
+    const rag = await runRagRetrieval(question, {
       traceId,
-      originalQuery: question,
-      rewrittenQuery: route.rewrittenQuery,
-      expandedQueries: route.expandedQueries,
-      intent: route.intent,
-      routeMethod: route.method,
-      intentScores: route.intentScores,
-      docTypes: rp.targetDocTypes.length > 0 ? rp.targetDocTypes : undefined,
-      stocks: rp.filters.stocks?.length ? rp.filters.stocks : undefined,
-      themes: rp.filters.themes?.length ? rp.filters.themes : undefined,
-      dateFrom: rp.filters.dateFrom,
-      dateTo: rp.filters.dateTo,
-      sourceBoosts: Object.keys(route.docTypeBoosts).length > 0
-        ? route.docTypeBoosts
-        : undefined,
-      weights: route.weights,
       mmrLambda: 0.7,
     });
-
-    // 检测 stance 冲突
-    const stances = hits.map((h) => h.chunk.stance).filter(Boolean);
-    const hasConflict = stances.length > 1 && new Set(stances).size > 1;
-
-    let ragContext = hits.length
-      ? hits
-          .map((hit, i) => {
-            const type = getDocumentTypeLabel(hit.chunk.docType);
-            const heading = hit.chunk.headingPath.join(' > ') || '正文';
-            const date = hit.chunk.date ? ` (${hit.chunk.date})` : '';
-            return `[${i + 1}] ${hit.chunk.title} [${type}${date}] [${heading}]\n${hit.chunk.content}`;
-          })
-          .join('\n\n')
-      : '暂无相关资料';
-
-    // 如果有 stance 冲突，在 context 末尾追加反证标记段落
-    if (hasConflict) {
-      const conflictNote = [
-        '',
-        '注意：以下检索结果中存在 stance 冲突（看多/看空/中性观点并存）：',
-        ...hits
-          .filter((h) => h.chunk.stance)
-          .map((h, i) => `- [${i + 1}] ${h.chunk.title}: ${h.chunk.stance}`),
-        '请在「分歧与反证」段落中分析这些不同立场。',
-      ].join('\n');
-      ragContext += '\n\n' + conflictNote;
-    }
 
     // 确定使用的消息（只传当前轮给 AI，避免上下文过长；历史已在 thread 文件中）
     const aiMessages: Array<{ role: string; content: string }> = [
@@ -137,7 +86,7 @@ export async function POST(request: Request) {
       })),
       {
         role: 'user',
-        content: `参考资料:\n${ragContext}\n\n问题: ${question}`,
+        content: `参考资料:\n${rag.contextText}\n\n问题: ${question}`,
       },
     ];
 
@@ -198,7 +147,7 @@ export async function POST(request: Request) {
           }
 
           const timestamp = new Date().toISOString();
-          const sourcesMeta = hits.slice(0, 8).map((h) => ({
+          const sourcesMeta = rag.contextHits.map((h) => ({
             id: h.chunk.docId,
             title: h.chunk.title,
             docType: h.chunk.docType,

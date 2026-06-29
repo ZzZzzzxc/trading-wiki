@@ -10,8 +10,7 @@
  */
 import { readFile, appendFile } from 'node:fs/promises';
 import path from 'node:path';
-import { retrieveRelevantChunks } from '@/lib/rag/retrieve';
-import { routeQuerySource } from '@/lib/rag/source-router';
+import { runRagRetrieval } from '@/lib/rag/pipeline';
 
 interface EvalQuery {
   id: string;
@@ -25,10 +24,12 @@ interface EvalResult {
   id: string;
   query: string;
   category: string;
+  intent: string;
   hitRate5: boolean;
   hitRate10: boolean;
   mrr: number;
   firstRank: number | null;
+  relevantDocIds: string[];
   topKIds: string[];
   note?: string;
 }
@@ -96,19 +97,17 @@ async function main() {
 
   for (const q of queries) {
     // 走完整管线：源路由 → 动态权重 → 检索 → rerank → MMR
-    const route = await routeQuerySource(q.query);
-    const searchQuery = route.rewrittenQuery || q.query;
-
-    const hits = await retrieveRelevantChunks({
-      query: searchQuery,
+    const rag = await runRagRetrieval(q.query, {
       topK: 10,
-      sourceBoosts: Object.keys(route.docTypeBoosts).length > 0 ? route.docTypeBoosts : undefined,
-      expandedQueries: route.expandedQueries,
-      weights: defaultWeights ? undefined : route.weights,
-      mmrLambda: noMmr ? undefined : 0.7,
+      weights: defaultWeights
+        ? { vector: 0.6, keyword: 0.15, metadata: 0.1, freshness: 0.15 }
+        : undefined,
+      enableRerank: !noRerank,
+      enableMmr: !noMmr,
+      mmrLambda: 0.7,
     });
 
-    const retrievedIds = hits.map((h) => h.chunk.docId);
+    const retrievedIds = rag.hits.map((h) => h.chunk.docId);
 
     let top5: ReturnType<typeof computeMetrics>;
     let top10: ReturnType<typeof computeMetrics>;
@@ -124,10 +123,12 @@ async function main() {
       id: q.id,
       query: q.query,
       category: q.category,
+      intent: rag.route.intent,
       hitRate5: top5.hit,
       hitRate10: top10.hit,
       mrr: top10.mrr,
       firstRank: top10.firstRank,
+      relevantDocIds: q.relevantDocIds,
       topKIds: retrievedIds,
       note: q.note,
     });
@@ -135,7 +136,7 @@ async function main() {
     const hasRel = q.relevantDocIds.length > 0;
     const status = !hasRel ? '⏭️' : top5.hit ? '✅' : top10.hit ? '⚠️' : '❌';
     const rankStr = top10.firstRank ? `#${top10.firstRank}` : '-';
-    console.log(`${status} ${q.id} ${q.query.slice(0, 28).padEnd(30)} intent=${route.intent.padEnd(12)} hit@5=${hasRel ? (top5.hit ? 1 : 0) : '-'} best=${rankStr}`);
+    console.log(`${status} ${q.id} ${q.query.slice(0, 28).padEnd(30)} intent=${rag.route.intent.padEnd(12)} hit@5=${hasRel ? (top5.hit ? 1 : 0) : '-'} best=${rankStr}`);
   }
 
   // Aggregate (只算有标注的)
@@ -193,6 +194,7 @@ async function main() {
       hitRate10,
       mrr,
       byCategory,
+      results,
     }) + '\n',
     'utf8',
   );

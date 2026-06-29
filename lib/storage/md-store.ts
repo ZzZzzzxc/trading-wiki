@@ -35,7 +35,7 @@ export async function readMarkdownDocument<
   const title = frontmatter.title ?? slug;
 
   return {
-    id: slugify(`${frontmatter.type}-${frontmatter.date ?? slug}-${title}`),
+    id: slugify(`${frontmatter.type}-${frontmatter.date ?? slug}-${slug}`),
     slug,
     title,
     absolutePath,

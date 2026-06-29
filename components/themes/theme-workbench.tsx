@@ -47,6 +47,10 @@ const emptyResult: ThemeResearchResult = {
   failure_conditions: [],
   next_steps: [],
   scorecard: undefined,
+  bottleneck_analysis: undefined,
+  investment_judgment: undefined,
+  a_stock_mapping: undefined,
+  verification_timeline: undefined,
 };
 
 interface ThemeWorkbenchProps {
@@ -430,6 +434,62 @@ export function ThemeWorkbench(props: ThemeWorkbenchProps = {}) {
                 onChange={(e) => setResult((c) => ({ ...c, scorecard: parseScorecard(e.target.value) }))}
                 style={{ fontFamily: 'monospace', fontSize: 12 }} />
             </label>
+          </div>
+        </details>
+
+        <details
+          style={{ marginTop: 8 }}
+          open={!!result.bottleneck_analysis}
+        >
+          <summary className="form-section-title" style={{ cursor: 'pointer' }}>🔍 约束分析</summary>
+          <div style={{ marginTop: 8 }}>
+            <div className="form-card" style={{ border: 'none', padding: 0 }}>
+              <textarea rows={6} value={JSON.stringify(result.bottleneck_analysis || {}, null, 2)}
+                onChange={(e) => { try { setResult(c => ({ ...c, bottleneck_analysis: JSON.parse(e.target.value) })); } catch {} }}
+                style={{ fontFamily: 'monospace', fontSize: 12 }} />
+            </div>
+          </div>
+        </details>
+
+        <details
+          style={{ marginTop: 8 }}
+          open={!!result.investment_judgment}
+        >
+          <summary className="form-section-title" style={{ cursor: 'pointer' }}>💡 投资判断</summary>
+          <div style={{ marginTop: 8 }}>
+            <div className="form-card" style={{ border: 'none', padding: 0 }}>
+              <textarea rows={6} value={JSON.stringify(result.investment_judgment || {}, null, 2)}
+                onChange={(e) => { try { setResult(c => ({ ...c, investment_judgment: JSON.parse(e.target.value) })); } catch {} }}
+                style={{ fontFamily: 'monospace', fontSize: 12 }} />
+            </div>
+          </div>
+        </details>
+
+        <details
+          style={{ marginTop: 8 }}
+          open={!!result.a_stock_mapping}
+        >
+          <summary className="form-section-title" style={{ cursor: 'pointer' }}>📈 A股映射</summary>
+          <div style={{ marginTop: 8 }}>
+            <div className="form-card" style={{ border: 'none', padding: 0 }}>
+              <textarea rows={6} value={JSON.stringify(result.a_stock_mapping || {}, null, 2)}
+                onChange={(e) => { try { setResult(c => ({ ...c, a_stock_mapping: JSON.parse(e.target.value) })); } catch {} }}
+                style={{ fontFamily: 'monospace', fontSize: 12 }} />
+            </div>
+          </div>
+        </details>
+
+        <details
+          style={{ marginTop: 8 }}
+          open={!!result.verification_timeline}
+        >
+          <summary className="form-section-title" style={{ cursor: 'pointer' }}>📅 验证时间线</summary>
+          <div style={{ marginTop: 8 }}>
+            <div className="form-card" style={{ border: 'none', padding: 0 }}>
+              <textarea rows={6} value={JSON.stringify(result.verification_timeline || {}, null, 2)}
+                onChange={(e) => { try { setResult(c => ({ ...c, verification_timeline: JSON.parse(e.target.value) })); } catch {} }}
+                style={{ fontFamily: 'monospace', fontSize: 12 }} />
+            </div>
           </div>
         </details>
 

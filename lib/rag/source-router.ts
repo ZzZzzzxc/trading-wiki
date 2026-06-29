@@ -55,6 +55,12 @@ const WEIGHT_PROFILES: Record<string, WeightConfig> = {
   market_review: { vector: 0.40, keyword: 0.15, metadata: 0.15, freshness: 0.30 },
   // 通用 → 信任语义检索
   general:       { vector: 0.60, keyword: 0.15, metadata: 0.10, freshness: 0.15 },
+  // 投资价值分析 → 语义+元数据为主，兼顾关键词
+  value_analysis: { vector: 0.50, keyword: 0.20, metadata: 0.20, freshness: 0.10 },
+  // 宏观政策 → 时效+关键词为主，向量为辅
+  policy_impact: { vector: 0.35, keyword: 0.25, metadata: 0.15, freshness: 0.25 },
+  // 风险警示 → 关键词精确命中最重要
+  risk_alert:    { vector: 0.25, keyword: 0.40, metadata: 0.15, freshness: 0.20 },
 };
 
 export { WEIGHT_PROFILES };
@@ -104,6 +110,9 @@ const intentSchema = z.object({
     'chain',
     'stock_deep',
     'market_review',
+    'value_analysis',
+    'policy_impact',
+    'risk_alert',
     'general',
   ]),
   reason: z.string().optional(),
@@ -144,21 +153,38 @@ async function classifyViaLLM(query: string): Promise<QueryIntent | null> {
               '- chain: 产业链、关联公司、上下游扩散',
               '- stock_deep: 个股深度研究（估值、产能、订单、财报）',
               '- market_review: 市场复盘、情绪周期、主线板块',
+              '- value_analysis: 投资价值分析（公司/行业/产业链估值、成长性、竞争格局等综合分析）',
+              '- policy_impact: 宏观/产业政策分析（政策、补贴、关税、利率、监管、产业基金等）',
+              '- risk_alert: 风险警示（暴雷、退市、处罚、立案调查、ST、财务造假等）',
               '- general: 以上都不匹配',
               '',
               'rewritten（可选）: 将用户口语化问题改写为更简洁、适合检索的关键词组合。',
-              '  示例：「光模块现在还能不能买」→ "光模块 供需 景气度 2025"',
-              '  示例：「帮我看看中际旭创最近怎么样」→ "中际旭创 最新动态"',
-              '  示例：「关于先进封装这个概念现在还能做吗」→ "先进封装 验证"',
+              '  示例（recency）：「光模块最近有什么催化」→ "光模块 催化 事件"',
+              '  示例（stock_deep）：「帮我看看中际旭创最近怎么样」→ "中际旭创 业绩 产能 订单"',
+              '  示例（chain）：「先进封装产业链」→ "先进封装 上下游 格局"',
+              '  示例（value_analysis）：「光纤光缆投资价值分析」→ "光纤光缆 估值 成长性 竞争格局 催化"',
+              '  示例（value_analysis）：「京东方还值得投资吗」→ "京东方 估值 PE 业绩 面板周期 护城河"',
+              '  示例（policy_impact）：「美联储加息对A股有什么影响」→ "美联储 加息 利率 A股 影响"',
+              '  示例（policy_impact）：「国家大基金三期投了什么」→ "大基金 三期 投资 半导体"',
+              '  示例（risk_alert）：「XX公司是不是要退市了」→ "XX 退市 风险 处罚"',
+              '  示例（risk_alert）：「光伏行业有什么风险」→ "光伏 产能过剩 价格战 风险"',
+              '  示例（market_review）：「今天盘面怎么看」→ "大盘 情绪 板块 资金"',
               '  如果原问题已经适合检索，则省略 rewritten。',
               '',
-              'expanded（可选，仅 recency 意图需要）: 当用户问最新动态/催化时，',
+              'expanded（可选）: 将口语化查询拆成多条搜索关键词覆盖不同角度。',
+              '  recency 意图需要 expanded，拆成事件/业绩/技术/供应链等角度。',
+              '  value_analysis 意图建议 expanded，拆成成长性/估值/竞争格局/催化等角度。',
+              '  示例（recency）：「800G光模块最近有什么催化」',
               '  将口语化查询拆成 3-5 条具体的搜索关键词组合，覆盖不同检索角度。',
               '  示例：「800G光模块最近有什么催化」',
               '  → ["800G光模块 催化 事件 订单", "800G 1.6T 光模块 量产 进度", "800G 光模块 供应链 公司"]',
-              '  示例：「光模块行业最新动态」',
+              '  示例（recency）：「光模块行业最新动态」',
               '  → ["光模块 技术 突破 量产", "光模块 业绩 订单 公告", "光模块 行业 观点 展望"]',
-              '  每条应覆盖不同的角度（事件/业绩/技术/供应链等），非 recency 意图不输出此字段。',
+              '  示例（value_analysis）：「光模块投资价值分析」',
+              '  → ["光模块 估值 成长性", "光模块 竞争格局 龙头", "光模块 订单 催化", "光模块 技术 风险"]',
+              '  示例（value_analysis）：「半导体设备国产替代前景」',
+              '  → ["半导体设备 国产化率 空间", "半导体设备 龙头 份额", "半导体设备 政策 催化", "半导体设备 估值 对比"]',
+              '  每条应覆盖不同的角度，recency 用事件/业绩/技术/供应链，value_analysis 用成长性/估值/格局/催化。',
               '只输出 JSON。',
             ].join('\n'),
           },
@@ -230,6 +256,27 @@ export function scoreIntents(query: string): IntentScore[] {
       weight: 1.0,
       patterns: [
         /复盘|情绪|冰点|高潮|退潮|市场环境|资金流向|主线|板块|赚钱效应|走[势向]|大盘/,
+      ],
+    },
+    {
+      intent: 'value_analysis',
+      weight: 1.0,
+      patterns: [
+        /投资价值|估值|成长性|赛道|竞争格局|护城河|天花板|空间|前景|值得买|能不能买|机会|布局|龙头/,
+      ],
+    },
+    {
+      intent: 'policy_impact',
+      weight: 1.0,
+      patterns: [
+        /政策|加息|降准|利率|关税|监管|补贴|改革|十四五|产业基金|国产替代|自主可控/,
+      ],
+    },
+    {
+      intent: 'risk_alert',
+      weight: 1.0,
+      patterns: [
+        /风险|暴雷|违约|退市|处罚|立案|调查|st|警示|亏损|造假|st|担保|冻结/,
       ],
     },
   ];
@@ -316,6 +363,18 @@ function buildRetrievalPlan(intentName: string, query?: string, entities?: Parse
       plan.targetDocTypes = ['daily_review' as DocumentType, 'viewpoint' as DocumentType, 'material' as DocumentType];
       plan.contextTopK = 8;
       plan.answerMode = 'summary';
+      break;
+    case 'policy_impact':
+      plan.targetDocTypes = ['material' as DocumentType, 'daily_review' as DocumentType, 'viewpoint' as DocumentType, 'theme_research' as DocumentType];
+      plan.topK = 20;
+      plan.contextTopK = 6;
+      plan.answerMode = 'evidence_based_analysis';
+      break;
+    case 'risk_alert':
+      plan.targetDocTypes = ['material' as DocumentType, 'viewpoint' as DocumentType, 'daily_review' as DocumentType, 'stock_profile' as DocumentType];
+      plan.topK = 20;
+      plan.contextTopK = 8;
+      plan.answerMode = 'evidence_based_analysis';
       break;
     case 'general':
     default:
@@ -426,6 +485,17 @@ function intentToRoute(intent: QueryIntent, method: 'llm' | 'regex', query?: str
       route.docTypeBoosts.viewpoint = 1.3;
       route.docTypeBoosts.material = 1.2;
       break;
+    case 'policy_impact':
+      route.docTypeBoosts.material = 2.0;
+      route.docTypeBoosts.daily_review = 2.0;
+      route.docTypeBoosts.viewpoint = 1.5;
+      route.docTypeBoosts.theme_research = 1.5;
+      break;
+    case 'risk_alert':
+      route.docTypeBoosts.material = 2.0;
+      route.docTypeBoosts.viewpoint = 2.0;
+      route.docTypeBoosts.stock_profile = 1.5;
+      break;
     case 'general':
       break;
   }
@@ -457,6 +527,16 @@ async function enrichRoute(route: SourceRoute, query: string): Promise<SourceRou
     if (timeRange?.dateFrom) route.retrievalPlan.filters.dateFrom = timeRange.dateFrom;
     if (timeRange?.dateTo) route.retrievalPlan.filters.dateTo = timeRange.dateTo;
   }
+  // 作者提取（从 query 中匹配已知作者名）
+  const KNOWN_AUTHORS = ['冰冰小美', '乘黃18', '唐史主任司马迁', '杨爽511', '赵燕翎', 'Mark_Huang', 'mark-huang', '胜哥2026'];
+  for (const name of KNOWN_AUTHORS) {
+    if (query.includes(name)) {
+      if (!route.entities) route.entities = { stocks: [], themes: [] };
+      route.entities.author = name;
+      break;
+    }
+  }
+
   // 实体注入检索计划 filter（general 意图不硬过滤，让向量检索自己判断）
   if (route.entities && route.intent !== 'general') {
     if (route.entities.stocks.length > 0) {

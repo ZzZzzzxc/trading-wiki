@@ -30,6 +30,18 @@ function renderInline(text: string): string {
   // 第一步：转义 HTML（安全防护）
   let result = escapeHtml(text);
 
+  // 引用标记 [N] → 上标标签
+  result = result.replace(/\[(\d+)\]/g, '<sup class="md-source-tag md-source-original" style="cursor:pointer">[$1]</sup>');
+
+  // 还原已存储的 <sup> 标签（旧版 markdown 构建器注入了原始 HTML）
+  result = result.replace(/&lt;(\/?sup[\s\S]*?)&gt;/g, (match: string, tag: string) => {
+    // 将 &quot; 还原为 "，&amp; 还原为 &，cursor:help → cursor:pointer
+    const restored = '<' + tag.replace(/&quot;/g, '"').replace(/&amp;/g, '&') + '>';
+    return tag.startsWith('sup ') || !tag.startsWith('/')
+      ? restored.replace(/cursor:help/g, 'cursor:pointer')
+      : restored;
+  });
+
   // 第二步：处理 Markdown 行内语法
   // 行内代码
   result = result.replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>');
@@ -39,6 +51,9 @@ function renderInline(text: string): string {
     const base = DOC_TYPE_URLS[type] || '/materials';
     return `<a href="${base}/${encodeURIComponent(docId)}" class="material-link" target="_blank">📎 查看原文</a>`;
   });
+
+  // 引用标记 [N] → 上标标签
+  result = result.replace(/\[(\d+)\]/g, '<sup class="md-source-tag md-source-original" style="cursor:default">[$1]</sup>');
 
   // 图片（必须在链接之前处理）
   result = result.replace(

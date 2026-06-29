@@ -59,11 +59,11 @@ Agent 编排层 (lib/ai/ + lib/agents/)  → ResearchAgent (三阶段) + SimpleG
   ↓
 Multi-Query 扩展（可选）
   ↓
-混合检索: 向量×权重 + BM25 关键词 + 元数据 + 时效
+混合检索: 向量×权重 + BM25 关键词 + 元数据 + 时效 + 作者/立场过滤
   ↓
 本地 Cross-encoder Rerank (bge-reranker-v2-m3)
   ↓
-MMR 多样化 (λ=0.5~0.8 按意图动态)
+MMR 多样化 (λ=0.5~0.8 按意图动态) + author/stance 过滤
   ↓
 注入 LLM → 六段式回答
 ```

@@ -42,6 +42,16 @@ export const FALLBACK_CHAINS: Record<string, FallbackChain> = {
     fallback: ['daily_review', 'note'],
     lastResort: ['qa'],
   },
+  policy_impact: {
+    primary: ['material', 'daily_review'],
+    fallback: ['viewpoint', 'theme_research'],
+    lastResort: ['stock_profile', 'note'],
+  },
+  risk_alert: {
+    primary: ['material', 'viewpoint'],
+    fallback: ['daily_review', 'theme_research'],
+    lastResort: ['stock_profile', 'qa'],
+  },
 };
 
 export function getFallbackChain(intent: string): FallbackChain {
